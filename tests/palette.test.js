@@ -10,6 +10,7 @@ const STANDARD = {
   lampOn: '#FFB347', lampCore: '#FFE9B0', lampOff: '#5B5F6E', moteCore: '#FFF6C2', moteGlow: '#FFE58A',
   shadeBody: '#120A1A', shadeRim: '#7A3CFF', shadeStun: '#3A3450', cloth: '#E8E2D0', scarf: '#C8102E',
   gold: '#F2C14E', drifter: '#8FA3B8', danger: '#FF5A5F', ui: '#F5F1E6',
+  cbRim: '#00B3FF', cbDanger: '#FFFFFF', // Ticket-03 colour-blind mode
 };
 
 test('renderer palette C{} matches the standard hex values exactly', () => {

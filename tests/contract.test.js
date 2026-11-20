@@ -17,7 +17,7 @@ const file = (name, content) => {
 
 test('game.contract.json has required fields and tuning == src/core/tuning.js', () => {
   const c = JSON.parse(readFileSync('game.contract.json', 'utf8'));
-  assert.equal(c.contract_version, '1.1');
+  assert.equal(c.contract_version, '1.2');
   for (const k of ['team', 'build_cmd', 'run_cmd', 'headless_cmd']) assert.equal(typeof c[k], 'string', k);
   assert.deepEqual(c.tuning, TUNING);
   assert.equal(c.tuning.lantern_count_night1, 5);

@@ -1,7 +1,8 @@
 // Acceptance scenarios (Contract v1.1). Each entry = one acceptance criterion checked through the REAL headless output.
 // Used by tests/scenarios.test.js (CI) and tools/proof.js (evidence in docs/proof/phase-N/).
-// AC01–AC19: Phase 1 criteria re-baselined to Ticket-02 standard numbers (see docs/notes/phase-2.md §3 for what changed and why).
-// P2_xx: new Phase 2 features.
+// AC01–AC19: Phase 1 criteria re-baselined to Ticket-02 standard numbers (docs/notes/phase-2.md §3) and Ticket-03 (docs/notes/phase-3.md §3).
+// P2_xx: Phase 2 features. P3_xx: Ticket-03 change request (fuel, drain, dawn win, capacity, new score).
+// Removed by Ticket-03 (reasons in docs/notes/phase-3.md §3): AC08_win_all_lit, P2_25_win_on_dawn_tick.
 import { TUNING as T, RULES as R } from '../../src/core/tuning.js';
 
 const empty = { random_motes: false, random_shades: false, random_drifters: false, wind_enabled: false, motes: [], shades: [], drifters: [], charms: [] };
@@ -42,11 +43,11 @@ export const SCENARIOS = [
     check: (L) => { const s = snaps(L).pop(); return expect(s.player.carried === 10 && s.motes_active === 4, `carried ${s.player.carried} left ${s.motes_active}`); },
   },
   {
-    id: 'AC06_deposit_and_light', req: 'Nạp 10 trong bán kính 2 m → deposit + lantern_lit; điểm = 10×10 + 100',
+    id: 'AC06_deposit_and_light', req: 'Nạp 10 trong bán kính 2 m → deposit + lantern_lit (relight false); điểm = 10×5 + 100 [Ticket-03 điểm]',
     ticks: 10, scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 10 } }, inputs: { frames: press(2, 'interact') },
     check: (L) => {
       const d = ev(L, 'deposit')[0]; const lit = ev(L, 'lantern_lit')[0];
-      return expect(d && d.tick === 3 && d.data.amount === 10 && lit && lit.data.lantern_id === 'L1' && end(L).score === 200, `deposit ${JSON.stringify(d)} score ${end(L).score}`);
+      return expect(d && d.tick === 3 && d.data.amount === 10 && lit && lit.data.lantern_id === 'L1' && lit.data.relight === false && end(L).score === 150 && snap(L, 10).lanterns[0].fuel === 99.9 && snap(L, 10).player.capacity === 12, `deposit ${JSON.stringify(d)} score ${end(L).score}`);
     },
   },
   {
@@ -54,13 +55,6 @@ export const SCENARIOS = [
     ticks: 20, scenario: { ...empty, player: { pos: [0, 0, 23.2], carried: 3 } },
     inputs: { frames: [{ tick: 0, interact: true }, { tick: 1, interact: false }, { tick: 2, move: [0, -1] }, { tick: 12, move: [0, 0], interact: true }] },
     check: (L) => { const d = ev(L, 'deposit'); return expect(d.length === 1 && d[0].data.deposited === 3 && snaps(L).pop().lanterns[0].deposited === 3 && !snaps(L).pop().lanterns[0].lit, `deposits ${JSON.stringify(d)}`); },
-  },
-  {
-    id: 'AC08_win_all_lit', req: 'Thắp đèn cuối → won/all_lit; điểm = 100 + 100 + floor(giây còn)×2 + 50×lửa',
-    ticks: 30,
-    scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 10, flames: 2 }, lanterns: ['L2', 'L3', 'L4', 'L5'].map((id) => ({ id, lit: true })), time_left_s: 100 },
-    inputs: { frames: [{ tick: 0, interact: true }] },
-    check: (L) => { const g = ev(L, 'game_over')[0]; return expect(g && g.tick === 1 && g.data.result === 'won' && end(L).score === 100 + 100 + 99 * 2 + 2 * 50, `game_over ${JSON.stringify(g)} end ${JSON.stringify(end(L))}`); },
   },
   {
     id: 'AC09_pulse_stun_push', req: 'Tỏa Sáng: tốn 3, choáng 120 tick, đẩy 4 m trong 15 tick đầu, +5 điểm/con; con ngoài 5 m không bị',
@@ -133,7 +127,7 @@ export const SCENARIOS = [
     check: (L) => {
       const s0 = L[0]; const sp = ev(L, 'shade_spawned');
       const posOk = JSON.stringify(s0.lanterns.map((l) => l.pos)) === JSON.stringify([[0, 0, 25], [23.8, 0, 7.7], [14.7, 0, -20.2], [-14.7, 0, -20.2], [-23.8, 0, 7.7]]);
-      return expect(posOk && s0.motes_active === 20 && s0.shades.length === 0 && JSON.stringify(sp.map((e) => [e.tick, e.data.id])) === '[[300,"S1"],[300,"S2"],[780,"S3"]]' && snap(L, 310).shades.every((s) => s.state === 'spawning') && s0.night === 1 && s0.time_left_s === 300,
+      return expect(posOk && s0.motes_active === 20 && s0.shades.length === 0 && JSON.stringify(sp.map((e) => [e.tick, e.data.id])) === '[[300,"S1"],[300,"S2"],[780,"S3"]]' && snap(L, 310).shades.every((s) => s.state === 'spawning') && s0.night === 1 && s0.time_left_s === 240,
         `spawned ${JSON.stringify(sp)} motes ${s0.motes_active}`);
     },
   },
@@ -258,7 +252,7 @@ export const SCENARIOS = [
     ticks: 40, scenario: empty, inputs: { frames: [{ tick: 0, move: [0, 1] }, ...press(10, 'pause'), ...press(30, 'pause')] },
     check: (L) => {
       const p = ev(L, 'paused')[0]; const r = ev(L, 'resumed')[0]; const s20 = snap(L, 20); const s40 = snap(L, 40);
-      return expect(p && p.tick === 11 && r && r.tick === 31 && s20.state === 'paused' && s20.sim_tick === 10 && near(s20.time_left_s, 300 - 10 / 60) && s40.sim_tick === 20 && near(s40.player.pos[2], 2) && end(L).ticks === 40,
+      return expect(p && p.tick === 11 && r && r.tick === 31 && s20.state === 'paused' && s20.sim_tick === 10 && near(s20.time_left_s, 240 - 10 / 60) && s40.sim_tick === 20 && near(s40.player.pos[2], 2) && end(L).ticks === 40,
         `paused ${JSON.stringify(p)} resumed ${JSON.stringify(r)} s20 ${s20.state}/${s20.sim_tick} s40 ${s40.sim_tick}/${s40.player.pos}`);
     },
   },
@@ -294,27 +288,125 @@ export const SCENARIOS = [
     },
   },
   {
-    id: 'P2_23_nights_2_3_setup', req: 'Đêm 2: 6 đèn, 330 s; Đêm 3: 7 đèn, 360 s, đèn đúng tọa độ chuẩn',
+    id: 'P2_23_nights_2_3_setup', req: 'Đêm 3: 7 đèn, 300 s [Ticket-03, trước 360], đèn đúng tọa độ chuẩn',
     night: 3, ticks: 0, scenario: null,
     check: (L) => {
       const s = L[0];
-      return expect(s.night === 3 && s.time_left_s === 360 && s.lanterns.length === 7 && JSON.stringify(s.lanterns[0].pos) === '[0,6,6]' && JSON.stringify(s.lanterns[6].pos) === '[-20,0,-35]' && s.motes_active === 20 && s.charms.length === 2 && s.wind.active === false && L[1].data.night === 3, JSON.stringify(s.lanterns.map((l) => l.pos)));
+      return expect(s.night === 3 && s.time_left_s === 300 && s.lanterns.length === 7 && JSON.stringify(s.lanterns[0].pos) === '[0,6,6]' && JSON.stringify(s.lanterns[6].pos) === '[-20,0,-35]' && s.motes_active === 20 && s.charms.length === 2 && s.wind.active === false && L[1].data.night === 3, JSON.stringify(s.lanterns.map((l) => l.pos)));
     },
   },
   {
-    id: 'P2_24_night2_setup', req: 'Đêm 2: 6 đèn L1–L6 theo thứ tự chuẩn, 330 s, Bùa C1 tại cầu',
+    id: 'P2_24_night2_setup', req: 'Đêm 2: 6 đèn L1–L6 theo thứ tự chuẩn, 270 s [Ticket-03, trước 330], Bùa C1 tại cầu',
     night: 2, ticks: 0, scenario: null,
-    check: (L) => { const s = L[0]; return expect(s.night === 2 && s.time_left_s === 330 && JSON.stringify(s.lanterns.map((l) => l.pos)) === JSON.stringify([[0, 0, 20], [17, 0, -10], [-17, 0, -10], [70, 0, 20], [87, 0, -10], [53, 0, -10]]) && s.charms.length === 1 && s.drifters.length === 0, JSON.stringify(s.lanterns)); },
+    check: (L) => { const s = L[0]; return expect(s.night === 2 && s.time_left_s === 270 && JSON.stringify(s.lanterns.map((l) => l.pos)) === JSON.stringify([[0, 0, 20], [17, 0, -10], [-17, 0, -10], [70, 0, 20], [87, 0, -10], [53, 0, -10]]) && s.charms.length === 1 && s.drifters.length === 0, JSON.stringify(s.lanterns)); },
+  },
+
+  // ---------------- Phase 3: Ticket-03 change request ----------------
+  {
+    id: 'P3_01_fuel_decay_out', req: 'Dầu hao 1/s; fuel ≤ 0 → lantern_out, deposited 0, ever_lit true, fuel 0',
+    ticks: 100, every: 1, scenario: { ...empty, lanterns: [{ id: 'L1', lit: true, fuel: 1 }, { id: 'L2', lit: true }] },
+    check: (L) => {
+      const o = ev(L, 'lantern_out'); const a = snap(L, 60).lanterns[0];
+      return expect(o.length === 1 && o[0].tick === 60 && o[0].data.lantern_id === 'L1' && snap(L, 30).lanterns[0].fuel === 0.5 && !a.lit && a.fuel === 0 && a.deposited === 0 && a.ever_lit === true && snap(L, 100).lanterns[1].fuel === 98.3,
+        `out ${JSON.stringify(o)} L1@60 ${JSON.stringify(a)} L2@100 ${snap(L, 100).lanterns[1].fuel}`);
+    },
   },
   {
-    id: 'P2_25_win_on_dawn_tick', req: 'Còn sống và đủ đèn ở đúng tick hết giờ → thắng (không phải dawn)',
-    ticks: 10, scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 10 }, lanterns: ['L2', 'L3', 'L4', 'L5'].map((id) => ({ id, lit: true })), time_left_s: 1 / 60 },
+    id: 'P3_02_refuel', req: 'Châm dầu đèn đang sáng: used = min(mang, ceil((100−fuel)/10)), fuel tối đa 100, +5/đom đóm, sự kiện refuel',
+    ticks: 10, scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 10 }, lanterns: [{ id: 'L1', lit: true, fuel: 55 }] }, inputs: { frames: [{ tick: 0, interact: true }] },
+    check: (L) => {
+      const r = ev(L, 'refuel');
+      return expect(r.length === 1 && r[0].tick === 1 && r[0].data.amount === 5 && r[0].data.fuel === 100 && snap(L, 10).player.carried === 5 && end(L).score === 25 && ev(L, 'deposit').length === 0 && ev(L, 'lantern_lit').length === 0,
+        `refuel ${JSON.stringify(r)} score ${end(L).score}`);
+    },
+  },
+  {
+    id: 'P3_03_relight', req: 'Đèn đã từng sáng thắp lại chỉ cần 5: lantern_lit relight true, +5×5 +40, relit_count 1, fuel 100, sức chứa 12',
+    ticks: 10, scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 7 }, lanterns: [{ id: 'L1', ever_lit: true }] }, inputs: { frames: [{ tick: 0, interact: true }] },
+    check: (L) => {
+      const lit = ev(L, 'lantern_lit')[0]; const l1 = snap(L, 10).lanterns[0];
+      return expect(lit && lit.data.relight === true && ev(L, 'deposit')[0].data.amount === 5 && end(L).score === 65 && l1.relit_count === 1 && l1.lit && l1.fuel === 99.9 && snap(L, 10).player.carried === 2 && snap(L, 10).player.capacity === 12,
+        `lit ${JSON.stringify(lit)} L1 ${JSON.stringify(l1)} score ${end(L).score}`);
+    },
+  },
+  {
+    id: 'P3_04_capacity_growth', req: 'Sức chứa = 10 + 2 × successful_lights, tối đa 20',
+    ticks: 400, scenario: { ...empty, player: { successful_lights: 7 }, motes: Array.from({ length: 25 }, (_, i) => [0, 0, 2 + i]) }, inputs: { frames: [{ tick: 0, move: [0, 1] }] },
+    check: (L) => { const p = snaps(L).pop().player; return expect(p.capacity === 20 && p.carried === 20 && L[0].player.capacity === 20, JSON.stringify(p)); },
+  },
+  {
+    id: 'P3_05_drain', req: 'Bóng wander đứng ≤2 m đèn yếu (<30) → drain, hút 5/s + hao 1/s, fuel_drain mỗi 60 tick, hết dầu → lantern_out, bóng về wander',
+    ticks: 320, scenario: { ...empty, lanterns: [{ id: 'L1', lit: true, fuel: 29 }], shades: [{ id: 'S1', pos: [0, 1, 23.5] }] },
+    check: (L) => {
+      const fd = ev(L, 'fuel_drain'); const o = ev(L, 'lantern_out')[0];
+      return expect(snap(L, 10).shades[0].state === 'drain' && fd[0] && fd[0].tick === 61 && fd[0].data.shade_id === 'S1' && fd[0].data.lantern_id === 'L1' && fd[0].data.fuel === 23 && o && o.tick === 291 && snap(L, 300).shades[0].state === 'wander',
+        `drain ${JSON.stringify(fd.slice(0, 2))} out ${JSON.stringify(o)} state@300 ${snap(L, 300).shades[0].state}`);
+    },
+  },
+  {
+    id: 'P3_06_drain_to_chase', req: 'Từ drain chỉ sang chase khi Mây vào trong 6 m (không phải 12 m)',
+    ticks: 40, scenario: { ...empty, player: { pos: [0, 0, 15.5] }, lanterns: [{ id: 'L1', lit: true, fuel: 29 }], shades: [{ id: 'S1', pos: [0, 1, 23.5], state: 'drain', target_lantern_id: 'L1' }] },
+    inputs: { frames: [{ tick: 0, move: [0, 1] }] },
+    check: (L) => expect(snap(L, 10).shades[0].state === 'drain' && snap(L, 30).shades[0].state === 'chase', `${snap(L, 10).shades[0].state} → ${snap(L, 30).shades[0].state}`),
+  },
+  {
+    id: 'P3_07_refuel_evicts', req: 'Châm dầu lên ≥30 khi có Bóng trong 6 m → đẩy ra mép trong 30 tick, không sát thương',
+    ticks: 200, scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 10 }, lanterns: [{ id: 'L1', lit: true, fuel: 20 }], shades: [{ id: 'S1', pos: [1, 1, 25], state: 'drain', target_lantern_id: 'L1' }] },
     inputs: { frames: [{ tick: 0, interact: true }] },
-    check: (L) => { const g = ev(L, 'game_over')[0]; return expect(g && g.tick === 1 && g.data.result === 'won' && end(L).score === 100 + 100 + 0 + 150, `${JSON.stringify(g)} ${JSON.stringify(end(L))}`); },
+    check: (L) => {
+      const r = ev(L, 'refuel')[0]; const d30 = xz(snap(L, 30).shades[0].pos, [0, 0, 25]);
+      return expect(r && r.data.amount === 9 && r.data.fuel === 100 && near(d30, 6, 0.01) && ev(L, 'player_hit').length === 0, `refuel ${JSON.stringify(r)} d30 ${d30} hits ${ev(L, 'player_hit').length}`);
+    },
+  },
+  {
+    id: 'P3_08_pulse_drain_bonus', req: 'Tỏa Sáng trúng Bóng đang drain: tổng +15 (thường +5), chuyển stunned',
+    ticks: 10, scenario: { ...empty, player: { pos: [0, 0, 20], carried: 3 }, lanterns: [{ id: 'L1', lit: true, fuel: 29 }], shades: [{ id: 'S1', pos: [0, 1, 23.5], state: 'drain', target_lantern_id: 'L1' }] },
+    inputs: { frames: [{ tick: 0, pulse: true }] },
+    check: (L) => expect(ev(L, 'pulse')[0]?.data.stunned_ids[0] === 'S1' && end(L).score === 15 && snap(L, 10).shades[0].state === 'stunned', `score ${end(L).score}`),
+  },
+  {
+    id: 'P3_09_low_fuel_no_zone', req: 'Đèn fuel < 30 mất vùng an toàn (đứng ở đèn vẫn bị đánh)',
+    ticks: 600, scenario: { ...empty, player: { pos: [0, 0, 25] }, lanterns: [{ id: 'L1', lit: true, fuel: 25 }], shades: [{ id: 'S1', pos: [0, 1, 14] }] },
+    check: (L) => expect(ev(L, 'player_hit').length > 0, 'expected a hit at a weak lantern'),
+  },
+  {
+    id: 'P3_10_no_early_win', req: '[THAY THẾ all_lit] Thắp đủ mọi đèn không kết thúc Đêm',
+    ticks: 30, scenario: { ...empty, player: { pos: [0, 0, 23.5], carried: 10 }, lanterns: ['L2', 'L3', 'L4', 'L5'].map((id) => ({ id, lit: true })) }, inputs: { frames: [{ tick: 0, interact: true }] },
+    check: (L) => expect(ev(L, 'lantern_lit').length === 1 && ev(L, 'game_over').length === 0 && end(L).state === 'playing' && end(L).ticks === 30, JSON.stringify(end(L))),
+  },
+  {
+    id: 'P3_11_dawn_survived', req: 'Hết giờ, còn sống, ≥ ceil(0.6×5)=3 đèn sáng → won/dawn_survived; điểm = Σ(50+floor(fuel)) + 50×lửa',
+    ticks: 100, scenario: { ...empty, lanterns: ['L1', 'L2', 'L3'].map((id) => ({ id, lit: true })), time_left_s: 1 },
+    check: (L) => { const g = ev(L, 'game_over')[0]; return expect(g && g.tick === 60 && g.data.result === 'won' && g.data.reason === 'dawn_survived' && end(L).score === 3 * (50 + 99) + 3 * 50, `${JSON.stringify(g)} ${JSON.stringify(end(L))}`); },
+  },
+  {
+    id: 'P3_12_dawn_below_threshold', req: 'Hết giờ với 2/5 đèn sáng → lost/dawn, không thưởng',
+    ticks: 100, scenario: { ...empty, lanterns: ['L1', 'L2'].map((id) => ({ id, lit: true })), time_left_s: 1 },
+    check: (L) => { const g = ev(L, 'game_over')[0]; return expect(g && g.data.result === 'lost' && g.data.reason === 'dawn' && end(L).score === 0, JSON.stringify(g)); },
+  },
+  {
+    id: 'P3_13_threshold_night2', req: 'Đêm 2 cần 4/6: 4 đèn sáng lúc bình minh → thắng',
+    night: 2, ticks: 100, scenario: { ...empty, lanterns: ['L1', 'L2', 'L3', 'L4'].map((id) => ({ id, lit: true })), time_left_s: 1 },
+    check: (L) => expect(ev(L, 'game_over')[0]?.data.reason === 'dawn_survived', JSON.stringify(ev(L, 'game_over'))),
+  },
+  {
+    id: 'P3_14_threshold_night3', req: 'Đêm 3 cần 5/7: 4 đèn sáng lúc bình minh → thua dawn',
+    night: 3, ticks: 100, scenario: { ...empty, lanterns: ['L1', 'L2', 'L3', 'L4'].map((id) => ({ id, lit: true })), time_left_s: 1 },
+    check: (L) => expect(ev(L, 'game_over')[0]?.data.reason === 'dawn' && end(L).state === 'lost', JSON.stringify(ev(L, 'game_over'))),
+  },
+  {
+    id: 'P3_15_no_flames_beats_dawn', req: 'Hết Ngọn Lửa đúng tick bình minh → luôn thua no_flames',
+    ticks: 10, scenario: { ...empty, player: { flames: 1 }, shades: [{ pos: [0, 1, 0] }], lanterns: ['L1', 'L2', 'L3'].map((id) => ({ id, lit: true })), time_left_s: 1 / 60 },
+    check: (L) => { const g = ev(L, 'game_over')[0]; return expect(g && g.tick === 1 && g.data.reason === 'no_flames', JSON.stringify(g)); },
+  },
+  {
+    id: 'P3_16_wander_targets_weak', req: 'Bóng wander đi tới đèn sáng yếu gần nhất rồi drain',
+    ticks: 260, scenario: { ...empty, lanterns: [{ id: 'L1', lit: true, fuel: 29 }, { id: 'L2', lit: true }], shades: [{ id: 'S1', pos: [0, 1, 15] }] },
+    check: (L) => { const s = snap(L, 260).shades[0]; return expect(s.state === 'drain' && xz(s.pos, [0, 0, 25]) <= 2 + 1e-3 && snap(L, 100).shades[0].pos[2] > 15, JSON.stringify(s)); },
   },
 ];
 
 function snapshotStates(L) {
-  const allowed = new Set(['spawning', 'wander', 'chase', 'recoil', 'stunned']);
+  const allowed = new Set(['spawning', 'wander', 'chase', 'recoil', 'stunned', 'drain']);
   return snaps(L).every((s) => s.shades.every((x) => allowed.has(x.state)));
 }

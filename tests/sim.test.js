@@ -60,5 +60,5 @@ test('scenario shade ids: given ids kept, auto ids skip used ones', () => {
 test('time_left_s = duration - steps/60', () => {
   const s = new Sim({ scenario: { random_motes: false, random_shades: false } });
   for (let i = 0; i < 90; i++) s.step({});
-  assert.equal(s.snapshot().time_left_s, 298.5);
+  assert.equal(s.snapshot().time_left_s, 238.5); // night 1 = 240 s since Ticket-03
 });
