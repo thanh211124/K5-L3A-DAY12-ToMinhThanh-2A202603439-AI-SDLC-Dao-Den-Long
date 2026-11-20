@@ -27,3 +27,19 @@ Ticket-03 "Đèn cạn dầu" — Contract **v1.2**. Design: [docs/adr/0001-lant
 - Fuel bar above lit lanterns, 1 Hz blink below 30, squashed/torn unlit lanterns; HUD shows carried/capacity and lanterns needed; "E — Châm dầu" prompt.
 - Colour-blind setting (persisted): shade rim/eyes #00B3FF, UI danger #FFFFFF + ⚠.
 - 16 P3 scenarios; old tests updated/removed with reasons (docs/notes/phase-3.md §3).
+
+## phase-4 / v1.0.0
+
+Ticket-04 "Bình minh: phát hành v1.0.0" — Contract **v1.3** (no gameplay rule changed; v1.0–v1.2 behaviour kept).
+
+### Added
+- **Benchmark** `node tools/bench.js --seed 42 --duration 30 --out bench.json`: Chrome 1280×720 with vsync/frame cap off, standard scene (night 1, 200 wandering shades, 100 motes, L1–L3 lit, orbit camera r 30 m / Y 15 m / 15 s per lap), 3 s warm-up; avg / p1-low FPS, p95 frame time, load time, browser RSS peak.
+- **Soak test** `node --expose-gc --jitless --no-expose-wasm tools/soak.js --seed 7 --nights 10 --out soak.json`.
+- **Local leaderboard**: top 10 stored on disk (`data/leaderboard.json`) via the local server, name entry after Bình Minh or a loss, menu screen, `node tools/serve.js --export-leaderboard out.json`. Vietnamese names with diacritics accepted.
+- **Accessibility**: remap every action (duplicate detection, "Khôi phục mặc định", persisted); captions + edge arrow for new shades, wind warning, last 10 s, low-fuel lanterns; reduced motion (no camera shake / screen flash); UI text ≥ 18 px, large text ×1.25.
+- Release build `npm run build` → self-contained static web zip.
+
+### Changed
+- `game.contract.json`: `contract_version` 1.3, new `bench_cmd`, `soak_cmd`; `run_cmd` is now `node tools/serve.js` (same as `npm start`, but accepts `--export-leaderboard`).
+- Three.js is installed from npm (`three@0.160.0`) instead of loaded from a CDN: no network needed at run time after `npm install`.
+- `Sim` gained benchmark switches (all off by default, so headless output is unchanged).
