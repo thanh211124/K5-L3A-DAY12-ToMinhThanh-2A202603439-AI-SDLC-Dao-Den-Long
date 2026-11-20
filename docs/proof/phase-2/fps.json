@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-20T08:49:50.975Z",
+  "resolution": "1280x720",
+  "seconds_per_night": 20,
+  "headless": false,
+  "cpu": "12th Gen Intel(R) Core(TM) i5-12450H",
+  "platform": "win32 x64",
+  "node": "v22.11.0",
+  "rows": [
+    {
+      "night": 1,
+      "avg_fps": 142.2,
+      "last_fps": 144,
+      "sim_ticks": 1178,
+      "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x000046A3) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "night": 2,
+      "avg_fps": 143.5,
+      "last_fps": 144,
+      "sim_ticks": 1198,
+      "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x000046A3) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "night": 3,
+      "avg_fps": 143.5,
+      "last_fps": 144,
+      "sim_ticks": 1198,
+      "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x000046A3) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    }
+  ],
+  "pass": true
+}
