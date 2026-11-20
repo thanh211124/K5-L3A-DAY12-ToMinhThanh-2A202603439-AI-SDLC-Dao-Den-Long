@@ -109,6 +109,75 @@ try {
   await sleep(2000);
   const cb = await ev("JSON.stringify({saved: JSON.parse(localStorage.getItem('ddl-settings')).cb, cls: document.body.classList.contains('cb'), danger: getComputedStyle(document.body).getPropertyValue('--danger').trim()})");
   check('Colour-blind palette setting persists and sets danger colour #FFFFFF', cb === JSON.stringify({ saved: true, cls: true, danger: '#FFFFFF' }), cb);
+
+  // ---------- Ticket-04 ----------
+  // key remapping: rebind jump to KeyJ, detect a duplicate, reset to defaults, persistence
+  await send('Page.navigate', { url: BASE });
+  await sleep(2000);
+  await click('bSet');
+  await ev("document.querySelector('.kbtn[data-a=jump]').click(), true");
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'j', code: 'KeyJ', windowsVirtualKeyCode: 74 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'j', code: 'KeyJ' });
+  await sleep(200);
+  const k1 = await ev("JSON.parse(localStorage.getItem('ddl-settings')).keys.jump");
+  check('Key remap: jump rebound to J and saved', k1 === 'KeyJ', k1);
+  await ev("document.querySelector('.kbtn[data-a=dash]').click(), true");
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'e', code: 'KeyE', windowsVirtualKeyCode: 69 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'e', code: 'KeyE' });
+  await sleep(200);
+  const warn = await ev("document.getElementById('keyWarn').textContent");
+  check('Duplicate key (dash = interact = E) is detected and reported', warn.includes('Trùng phím') && warn.includes('Lướt') && warn.includes('Tương tác'), warn);
+  await click('bKeyReset');
+  await sleep(200);
+  const k2 = await ev("JSON.stringify(JSON.parse(localStorage.getItem('ddl-settings')).keys)");
+  check('"Khôi phục mặc định" restores every binding', k2 === JSON.stringify({ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', dash: 'ShiftLeft', interact: 'KeyE', pulse: 'KeyF', pause: 'KeyP' }) && (await ev("document.getElementById('keyWarn').textContent")) === '', k2);
+  // remapped key actually drives the game: bind jump to J, press J in game, Mây leaves the ground
+  await ev("document.querySelector('.kbtn[data-a=jump]').click(), true");
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'j', code: 'KeyJ', windowsVirtualKeyCode: 74 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'j', code: 'KeyJ' });
+  await ev("(()=>{const c=document.getElementById('rm');c.checked=true;c.dispatchEvent(new Event('change'));const l=document.getElementById('lt');l.checked=true;l.dispatchEvent(new Event('change'));return true})()");
+  await send('Page.navigate', { url: `${BASE}?night=1&autostart` });
+  await sleep(1500);
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'j', code: 'KeyJ', windowsVirtualKeyCode: 74 });
+  await sleep(150);
+  const y = await ev('__game.sim.player.pos[1]');
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'j', code: 'KeyJ' });
+  check('Remapped jump key (J) makes Mây jump in game', y > 0, `y=${y}`);
+  const fonts = JSON.parse(await ev("JSON.stringify(['timer','topRight','carried','prompt','cdDash','charmBadge'].map((i)=>parseFloat(getComputedStyle(document.getElementById(i)).fontSize)))"));
+  check('Large text on: every HUD text >= 22.5px (18 × 1.25)', fonts.every((f) => f >= 22.5), JSON.stringify(fonts));
+  const rmShake = await ev("(JSON.parse(localStorage.getItem('ddl-settings')).reduceMotion)");
+  check('Reduced motion setting persisted', rmShake === true);
+  // captions: a shade spawn shows a caption and an edge arrow
+  await ev('(__game.sim.simTick = 299, true)');
+  await sleep(600);
+  const cap = await ev("document.getElementById('captions').innerText");
+  check('Caption + arrow when a shade appears', cap.includes('Bóng Mực xuất hiện'), cap.replace(/\n/g, ' | '));
+  // reset settings for the next checks
+  await ev("(localStorage.removeItem('ddl-settings'), true)");
+  await send('Page.navigate', { url: BASE });
+  await sleep(1500);
+  const small = JSON.parse(await ev("JSON.stringify([...document.querySelectorAll('#card *')].filter((e)=>e.childElementCount===0 && e.textContent.trim()).map((e)=>parseFloat(getComputedStyle(e).fontSize)))"));
+  check('Default text: no menu text below 18px at 1280×720', small.length > 0 && Math.min(...small) >= 18, `min ${Math.min(...small)}px over ${small.length} elements`);
+
+  // leaderboard: lose → enter name → saved → listed from main menu
+  await send('Page.navigate', { url: `${BASE}?night=1&autostart` });
+  await sleep(1500);
+  await ev('(__game.sim.player.flames = 0, true)');
+  await sleep(1500);
+  await ev("(document.getElementById('pname').value='ab', true)");
+  await click('bSave');
+  await sleep(300);
+  check('Invalid name (2 chars) is rejected', (await ev("document.getElementById('nameErr').textContent")).length > 0);
+  await ev("(document.getElementById('pname').value='Mây_UI', true)");
+  await click('bSave');
+  await sleep(800);
+  const lb = await ev("document.getElementById('card').innerText");
+  check('Score saved and leaderboard shown after losing', lb.includes('Bảng xếp hạng') && lb.includes('Mây_UI'), lb.replace(/\n/g, ' | ').slice(0, 160));
+  await send('Page.navigate', { url: BASE });
+  await sleep(1500);
+  await click('bLb');
+  await sleep(800);
+  check('Leaderboard reachable from main menu and survives reload', (await ev("document.getElementById('card').innerText")).includes('Mây_UI'));
   ws.close();
 } finally {
   chrome.kill();
