@@ -1,44 +1,82 @@
-// Single source of truth for gameplay numbers.
+// Single source of truth for gameplay numbers — Ticket-02 standard values (Contract v1.1).
 // game.contract.json "tuning" MUST mirror TUNING exactly (enforced by tests/contract.test.js).
 
 export const TUNING = {
-  player_speed: 6, // m/s on XZ plane
-  carry_capacity: 10, // max motes carried
-  lantern_cost: 5, // motes needed to light one lantern
+  player_speed: 6,
+  carry_capacity: 10,
+  lantern_cost: 10,
   lantern_count_night1: 5,
-  pickup_radius: 1.5, // auto pickup when XZ distance <= r
-  interact_radius: 3, // deposit when XZ distance to lantern <= r
-  pulse_cost: 1, // carried motes spent per pulse
-  pulse_radius: 6,
+  pickup_radius: 1,
+  interact_radius: 2,
+  pulse_cost: 3,
+  pulse_radius: 5,
   night1_duration_s: 300,
-  flames: 3, // health
+  night2_duration_s: 330,
+  night3_duration_s: 360,
+  flames: 3,
   invuln_s: 1.5,
-  hit_drop_ratio: 0.5, // dropped = floor(carried * ratio)
-  pulse_stun_s: 3,
+  hit_drop_ratio: 0.5,
+  pulse_stun_s: 2,
   pulse_push_m: 4,
-  pulse_cooldown_s: 2,
-  safe_radius: 5, // shades cannot enter this radius around a LIT lantern
-  shade_speed: 3.5,
+  pulse_cooldown_s: 3,
+  safe_radius: 6,
+  shade_speed: 4,
   shade_hit_radius: 1,
-  fall_enabled: false, // island edge is a soft wall, no falling
-  score: { per_mote: 10, per_lantern: 100, per_stun: 25, per_second_left: 2, per_flame_left: 50 },
+  fall_enabled: true,
+  dash_speed: 14,
+  dash_duration_s: 0.2,
+  dash_cooldown_s: 1.5,
+  score: { per_mote: 10, per_lantern: 100, per_stun: 5, per_second_left: 2, per_flame_left: 50 },
 };
 
-// Internal world constants (not part of the contract).
-export const WORLD = {
+// Other standard rules from Ticket-02 (not contract keys). All durations in ticks (60/s).
+export const RULES = {
   tick_rate: 60,
-  island_radius: 40,
-  lantern_ring_radius: 25,
   jump_speed: 7,
   gravity: 20,
-  shade_height: 1,
-  initial_motes: 30,
-  max_motes: 30,
-  mote_respawn_s: 2,
-  mote_min_dist_from_origin: 3,
-  initial_shades: 2,
-  max_shades: 6,
-  shade_spawn_s: 30,
-  shade_spawn_radius: 36,
+  step_height: 0.35, // max ledge a foot can walk up (ramps are smooth; tier cliffs are 3 m)
+  pickup_dy: 1.5,
+  hit_dy: 1.5,
+  dash_ticks: 12,
+  dash_cd_ticks: 90,
+  pulse_cd_ticks: 180,
+  pulse_center_dy: 0.8,
+  stun_ticks: 120,
+  push_ticks: 15,
+  invuln_ticks: 90,
+  mote_initial: 20,
+  mote_cap: 30,
+  mote_spawn_every: 240,
+  dropped_ttl: 480,
+  drop_ring: [1.5, 2.5],
+  safe_evict_ticks: 30,
+  shade_first_spawn: 300,
   shade_spawn_min_dist: 15,
+  shade_spawning_ticks: 30, // assumption B6
+  shade_hover: 1,
+  shade_wander_speed: 2, // assumption B7
+  shade_detect: 12,
+  shade_giveup: 18,
+  recoil_m: 2,
+  recoil_ticks: 60,
+  fall_y: -10,
+  respawn_wait: 60,
+  drifter_speed: 7,
+  drifter_idle_speed: 2,
+  drifter_max: 2,
+  drifter_spawn_every: 1200,
+  drifter_chase_carried: 5,
+  drifter_chase_range: 15,
+  drifter_touch: 1.2,
+  drifter_steal_max: 3,
+  drifter_flee_ticks: 240,
+  drifter_drop_flee_ticks: 120,
+  drifter_hover: 1.5,
+  charm_ticks: 600,
+  charm_respawn: 2700,
+  charm_speed: 7.2,
+  wind_every: 1800,
+  wind_ticks: 300,
+  wind_speed: 2,
+  pad_radius: 1,
 };
