@@ -80,6 +80,8 @@ export class Sim {
     this.randomDrifters = (boolField(sc, 'random_drifters') ?? true) && map.drifters;
     this.windEnabled = (boolField(sc, 'wind_enabled') ?? true) && map.wind;
     this.startTimeS = map.duration_s;
+    // Ticket-04 benchmark switches (all false in gameplay/headless; see createBenchSim)
+    this.flags = { noFuel: false, noPickup: false, noDamage: false, noSpawn: false, noEnd: false };
     this.stats = { hits: 0, falls: 0, pulses: 0, stunned: 0, steals: 0, deposited: 0 };
 
     // ---- player ----
@@ -338,7 +340,7 @@ export class Sim {
     this.motes = this.motes.filter((m) => m.kind !== 'dropped' || m.ttl > 0);
     for (const c of this.charms) if (!c.available && c.respawn > 0 && --c.respawn === 0) c.available = true;
     // 2b (Ticket-03). fuel: decay 1/60 per tick + 5/60 per draining shade; then lanterns at fuel <= 0 go out
-    for (const l of this.lanterns) if (l.lit) l.fuel -= T.fuel_decay_per_s;
+    if (!this.flags.noFuel) for (const l of this.lanterns) if (l.lit) l.fuel -= T.fuel_decay_per_s;
     for (const s of [...this.shades].sort(byId)) {
       if (s.state !== 'drain' || !s.target || !s.target.lit) continue;
       s.target.fuel -= T.drain_per_s;
@@ -363,7 +365,7 @@ export class Sim {
     } else if (alive) this.movePlayer(input, btn, emit);
 
     // 4. pickup
-    if (alive && !respawnNow) {
+    if (alive && !respawnNow && !this.flags.noPickup) {
       for (let i = 0; i < this.motes.length && P.carried < this.capacity; ) {
         const m = this.motes[i];
         if (m.born < this.simTick && distXZ(m.pos, P.pos) <= T.pickup_radius + EPS && Math.abs(P.pos[1] - m.pos[1]) <= R.pickup_dy) {
@@ -483,7 +485,7 @@ export class Sim {
     this.moveDrifters();
 
     // 9. contacts: drifters steal first, then shades hit (ascending id)
-    if (alive && !respawnNow) {
+    if (alive && !respawnNow && !this.flags.noDamage) {
       for (const d of [...this.drifters].sort(byId)) {
         if ((d.state === 'idle' || d.state === 'chase') && !d.stoleOnce && d.born < this.simTick && P.carried > 0 && distXZ(d.pos, P.pos) <= R.drifter_touch + EPS) {
           const amount = Math.min(R.drifter_steal_max, P.carried);
@@ -523,9 +525,10 @@ export class Sim {
     }
 
     // 10. spawns
-    this.spawn(emit);
+    if (!this.flags.noSpawn) this.spawn(emit);
 
     // 11. win / lose (Ticket-03): no early win. no_flames always first; at dawn win iff lit >= ceil(0.6 × total)
+    if (this.flags.noEnd) return ev;
     if (P.flames <= 0) this.finish('lost', 'no_flames', emit);
     else if (this.simTick >= this.endTick) {
       if (this.litCount >= this.winThreshold) this.finish('won', 'dawn_survived', emit);
@@ -846,4 +849,31 @@ export class Sim {
       charms: this.charms.map((c) => ({ id: c.id, available: c.available, respawn_s: r3(c.respawn / 60) })),
     };
   }
+}
+
+// Ticket-04 benchmark scene (identical for everyone): night 1, 200 wandering shades spread evenly over the island
+// (area-uniform, seeded), 100 motes, L1–L3 lit with fuel 100, Mây idle at (0,0,0). Spawning, damage, pickup,
+// fuel decay and end-of-night are switched off; shades still move by the normal wander rule.
+export function createBenchSim(seed = 42) {
+  const sim = new Sim({
+    seed,
+    night: 1,
+    scenario: { random_motes: false, random_shades: false, random_drifters: false, wind_enabled: false, motes: [], shades: [], drifters: [], charms: [], lanterns: ['L1', 'L2', 'L3'].map((id) => ({ id, lit: true, fuel: 100 })) },
+  });
+  sim.flags = { noFuel: true, noPickup: true, noDamage: true, noSpawn: true, noEnd: true };
+  const R_ISLAND = 38;
+  const spot = () => {
+    const a = sim.rng() * Math.PI * 2;
+    const r = Math.sqrt(sim.rng()) * R_ISLAND;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  };
+  for (let i = 0; i < 200; i++) {
+    const [x, z] = spot();
+    sim.addShade([x, 1, z], undefined, 'wander').born = -1;
+  }
+  for (let i = 0; i < 100; i++) {
+    const [x, z] = spot();
+    sim.addMote([x, 0, z], 'random');
+  }
+  return sim;
 }
