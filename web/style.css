@@ -1,0 +1,39 @@
+/* Standard palette (Ticket-02): UI text #F5F1E6, danger #FF5A5F, gold/score #F2C14E, lantern #FFB347 */
+:root { --ui: #F5F1E6; --danger: #FF5A5F; --gold: #F2C14E; --lamp: #FFB347; --sky: #0E1430; --fog: #1B2350; --panel: rgba(14, 20, 48, .78); }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); color: var(--ui); font-family: system-ui, "Segoe UI", sans-serif; user-select: none; }
+canvas { display: block; }
+.hidden { display: none !important; }
+kbd { background: #2a2f5e; border-radius: 4px; padding: 0 5px; font-size: 11px; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#flames { position: absolute; top: 14px; left: 16px; font-size: 26px; letter-spacing: 4px; }
+#flames .on { color: var(--lamp); text-shadow: 0 0 10px var(--lamp); }
+#flames .off { color: #4a4560; }
+#timer { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 800; background: var(--panel); padding: 2px 16px; border-radius: 10px; font-variant-numeric: tabular-nums; }
+#timer.danger { color: var(--danger); animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { to { visibility: hidden; } }
+#topRight { position: absolute; top: 12px; right: 16px; text-align: right; background: var(--panel); padding: 6px 14px; border-radius: 10px; font-size: 16px; line-height: 1.5; }
+#topRight b { color: var(--gold); }
+#prompt { position: absolute; bottom: 74px; width: 100%; text-align: center; font-size: 19px; font-weight: 700; text-shadow: 0 0 8px #000; }
+#moteBar { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; background: var(--panel); padding: 7px 10px; border-radius: 12px; }
+#moteBar i { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #5b5f6e; background: #1a1f3d; }
+#moteBar i.on { background: radial-gradient(circle, #FFF6C2 30%, #FFE58A 70%); border-color: #FFE58A; box-shadow: 0 0 8px #FFE58A; }
+#cds { position: absolute; bottom: 18px; right: 18px; display: flex; gap: 10px; }
+.cd { width: 64px; height: 64px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 2px solid var(--gold); background: var(--panel); position: relative; overflow: hidden; }
+.cd::after { content: ""; position: absolute; inset: 0; background: conic-gradient(rgba(0, 0, 0, .65) calc(var(--p, 0) * 1turn), transparent 0); }
+.cd.off { border-color: #5b5f6e; color: #999; }
+#arrow { position: absolute; font-size: 30px; color: var(--lamp); text-shadow: 0 0 8px #000; display: none; transform-origin: 50% 50%; }
+#windWarn { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); color: #cfe3d6; font-weight: 700; display: none; }
+#charmBadge { position: absolute; top: 56px; left: 16px; color: var(--gold); font-weight: 700; }
+#fps { position: fixed; bottom: 4px; left: 6px; font: 12px monospace; opacity: .7; pointer-events: none; }
+
+.overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 10, 30, .74); }
+.card { max-width: 560px; margin: 16px; text-align: center; background: rgba(20, 24, 58, .96); border: 1px solid var(--gold); border-radius: 16px; padding: 24px 28px; }
+.card h1 { margin: 0 0 6px; color: var(--lamp); }
+.card h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
+.card p { line-height: 1.55; }
+.card .quote { font-style: italic; border-left: 3px solid var(--lamp); padding-left: 12px; text-align: left; }
+.card button { display: block; width: 100%; margin: 8px 0; padding: 10px; font: 700 16px system-ui; color: #1a1206; background: var(--lamp); border: 0; border-radius: 10px; cursor: pointer; }
+.card button.sec { background: #2a2f5e; color: var(--ui); }
+.card label { display: block; text-align: left; margin: 12px 0 4px; }
+.card input[type=range] { width: 100%; }
