@@ -3,3 +3,6 @@ node_modules/
 *.env
 out*.jsonl
 /tmp/
+data/
+dist/
+bench.local.json

@@ -1,9 +1,11 @@
 {
-  "contract_version": "1.2",
+  "contract_version": "1.3",
   "team": "2A202603439-ToMinhThanh",
   "build_cmd": "npm install",
-  "run_cmd": "npm start",
+  "run_cmd": "node tools/serve.js",
   "headless_cmd": "node src/headless.js",
+  "bench_cmd": "node tools/bench.js",
+  "soak_cmd": "node --expose-gc --jitless --no-expose-wasm tools/soak.js",
   "tuning": {
     "player_speed": 6,
     "carry_capacity": 10,
