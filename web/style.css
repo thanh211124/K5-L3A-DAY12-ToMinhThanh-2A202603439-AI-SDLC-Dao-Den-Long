@@ -1,45 +1,64 @@
-/* Standard palette (Ticket-02): UI text #F5F1E6, danger #FF5A5F, gold/score #F2C14E, lantern #FFB347 */
-:root { --ui: #F5F1E6; --danger: #FF5A5F; --gold: #F2C14E; --lamp: #FFB347; --sky: #0E1430; --fog: #1B2350; --panel: rgba(14, 20, 48, .78); }
-html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); color: var(--ui); font-family: system-ui, "Segoe UI", sans-serif; user-select: none; }
+/* Standard palette (Ticket-02): UI text #F5F1E6, danger #FF5A5F, gold/score #F2C14E, lantern #FFB347.
+   Ticket-04: every UI text >= 18px at 1280x720 (all sizes are multiples of --fs = 18px); "Chữ lớn" scales by 1.25. */
+:root { --ui: #F5F1E6; --danger: #FF5A5F; --gold: #F2C14E; --lamp: #FFB347; --sky: #0E1430; --fog: #1B2350; --panel: rgba(14, 20, 48, .82); }
+/* --fs must be computed on body (not :root) so that body.large changing --k takes effect */
+body { --k: 1; --fs: calc(18px * var(--k)); }
+body.large { --k: 1.25; }
+/* Ticket-03 colour-blind mode: UI danger #FF5A5F -> #FFFFFF (+ ⚠ icon added in JS) */
+body.cb { --danger: #FFFFFF; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); color: var(--ui); font-family: system-ui, "Segoe UI", sans-serif; font-size: var(--fs); user-select: none; }
 canvas { display: block; }
 .hidden { display: none !important; }
-kbd { background: #2a2f5e; border-radius: 4px; padding: 0 5px; font-size: 11px; }
+kbd { background: #2a2f5e; border-radius: 4px; padding: 0 5px; font-size: var(--fs); }
 
 #hud { position: fixed; inset: 0; pointer-events: none; }
-#flames { position: absolute; top: 14px; left: 16px; font-size: 26px; letter-spacing: 4px; }
+#flames { position: absolute; top: 14px; left: 16px; font-size: calc(var(--fs) * 1.6); letter-spacing: 4px; }
 #flames .on { color: var(--lamp); text-shadow: 0 0 10px var(--lamp); }
 #flames .off { color: #4a4560; }
-#timer { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 800; background: var(--panel); padding: 2px 16px; border-radius: 10px; font-variant-numeric: tabular-nums; }
+#timer { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: calc(var(--fs) * 1.7); font-weight: 800; background: var(--panel); padding: 2px 16px; border-radius: 10px; font-variant-numeric: tabular-nums; }
 #timer.danger { color: var(--danger); animation: blink 1s steps(2, start) infinite; }
 @keyframes blink { to { visibility: hidden; } }
-#topRight { position: absolute; top: 12px; right: 16px; text-align: right; background: var(--panel); padding: 6px 14px; border-radius: 10px; font-size: 16px; line-height: 1.5; }
+#topRight { position: absolute; top: 12px; right: 16px; text-align: right; background: var(--panel); padding: 6px 14px; border-radius: 10px; font-size: var(--fs); line-height: 1.5; }
 #topRight b { color: var(--gold); }
-#prompt { position: absolute; bottom: 74px; width: 100%; text-align: center; font-size: 19px; font-weight: 700; text-shadow: 0 0 8px #000; }
-#moteBar { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; background: var(--panel); padding: 7px 10px; border-radius: 12px; }
-#moteBar i { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #5b5f6e; background: #1a1f3d; }
+#prompt { position: absolute; bottom: 104px; width: 100%; text-align: center; font-size: calc(var(--fs) * 1.1); font-weight: 700; text-shadow: 0 0 8px #000; }
+#moteBar { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; background: var(--panel); padding: 7px 10px; border-radius: 12px; }
+#moteBar i { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #5b5f6e; background: #1a1f3d; }
 #moteBar i.on { background: radial-gradient(circle, #FFF6C2 30%, #FFE58A 70%); border-color: #FFE58A; box-shadow: 0 0 8px #FFE58A; }
-#cds { position: absolute; bottom: 18px; right: 18px; display: flex; gap: 10px; }
-.cd { width: 64px; height: 64px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 2px solid var(--gold); background: var(--panel); position: relative; overflow: hidden; }
+#carried { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); font-size: var(--fs); font-weight: 700; color: var(--gold); text-shadow: 0 0 6px #000; }
+#cds { position: absolute; bottom: 16px; right: 16px; display: flex; gap: 10px; }
+.cd { width: calc(var(--fs) * 5.2); height: calc(var(--fs) * 5.2); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: var(--fs); font-weight: 700; border: 2px solid var(--gold); background: var(--panel); position: relative; overflow: hidden; text-align: center; }
 .cd::after { content: ""; position: absolute; inset: 0; background: conic-gradient(rgba(0, 0, 0, .65) calc(var(--p, 0) * 1turn), transparent 0); }
-.cd.off { border-color: #5b5f6e; color: #999; }
-#arrow { position: absolute; font-size: 30px; color: var(--lamp); text-shadow: 0 0 8px #000; display: none; transform-origin: 50% 50%; }
-#windWarn { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); color: #cfe3d6; font-weight: 700; display: none; }
-#charmBadge { position: absolute; top: 56px; left: 16px; color: var(--gold); font-weight: 700; }
-#fps { position: fixed; bottom: 4px; left: 6px; font: 12px monospace; opacity: .7; pointer-events: none; }
+.cd.off { border-color: #5b5f6e; color: #aaa; }
+#arrow, #shadeArrow { position: absolute; font-size: calc(var(--fs) * 1.8); text-shadow: 0 0 8px #000; display: none; transform-origin: 50% 50%; }
+#arrow { color: var(--lamp); }
+#shadeArrow { color: #7A3CFF; }
+body.cb #shadeArrow { color: #00B3FF; }
+#windWarn { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); color: #cfe3d6; font-weight: 700; font-size: var(--fs); display: none; }
+#charmBadge { position: absolute; top: 64px; left: 16px; color: var(--gold); font-weight: 700; font-size: var(--fs); }
+#captions { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; width: min(90vw, 760px); }
+.cap { background: rgba(0, 0, 0, .72); border-left: 4px solid var(--danger); padding: 4px 12px; border-radius: 6px; font-size: var(--fs); font-weight: 700; }
+#fps { position: fixed; bottom: 4px; left: 6px; font: var(--fs) monospace; opacity: .8; pointer-events: none; }
+#flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#flash.on { animation: flash .35s ease-out; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
 
 .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 10, 30, .74); }
-.card { max-width: 560px; margin: 16px; text-align: center; background: rgba(20, 24, 58, .96); border: 1px solid var(--gold); border-radius: 16px; padding: 24px 28px; }
-.card h1 { margin: 0 0 6px; color: var(--lamp); }
-.card h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
-.card p { line-height: 1.55; }
+.card { max-width: 640px; max-height: 92vh; overflow-y: auto; margin: 16px; text-align: center; background: rgba(20, 24, 58, .96); border: 1px solid var(--gold); border-radius: 16px; padding: 22px 28px; font-size: var(--fs); }
+.card h1 { margin: 0 0 6px; color: var(--lamp); font-size: calc(var(--fs) * 1.8); }
+.card h2 { margin: 10px 0; color: var(--gold); font-size: calc(var(--fs) * 1.1); }
+.card p { line-height: 1.5; }
+.card .hint { opacity: .85; }
 .card .quote { font-style: italic; border-left: 3px solid var(--lamp); padding-left: 12px; text-align: left; }
-.card button { display: block; width: 100%; margin: 8px 0; padding: 10px; font: 700 16px system-ui; color: #1a1206; background: var(--lamp); border: 0; border-radius: 10px; cursor: pointer; }
+.card button { display: block; width: 100%; margin: 8px 0; padding: 10px; font: 700 var(--fs) system-ui; color: #1a1206; background: var(--lamp); border: 0; border-radius: 10px; cursor: pointer; }
 .card button.sec { background: #2a2f5e; color: var(--ui); }
-.card label { display: block; text-align: left; margin: 12px 0 4px; }
+.card label { display: block; text-align: left; margin: 10px 0 4px; }
 .card input[type=range] { width: 100%; }
-
-/* Ticket-03 */
-#carried { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 700; color: var(--gold); text-shadow: 0 0 6px #000; }
-#moteBar i { width: 14px; height: 14px; }
-/* colour-blind mode: UI danger #FF5A5F -> #FFFFFF (+ warning icon added in JS) */
-body.cb { --danger: #FFFFFF; }
+.card input[type=checkbox] { width: 20px; height: 20px; vertical-align: middle; }
+.card input[type=text], .card #pname { width: 100%; box-sizing: border-box; padding: 8px; font-size: var(--fs); border-radius: 8px; border: 1px solid var(--gold); background: #11163a; color: var(--ui); }
+.warn { color: var(--danger); font-weight: 700; min-height: 1em; }
+.krow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.krow button { width: 46%; margin: 3px 0; }
+.krow.dup button { outline: 3px solid var(--danger); }
+.lb { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.lb th, .lb td { padding: 4px 6px; border-bottom: 1px solid #2a2f5e; }
+.lb tr.me td { color: var(--gold); font-weight: 700; }
