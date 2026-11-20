@@ -1,7 +1,7 @@
 // Input timeline per Test Contract v1.0 section C.
 import { FormatError } from './sim.js';
 
-const BUTTONS = ['jump', 'interact', 'pulse', 'dash'];
+const BUTTONS = ['jump', 'interact', 'pulse', 'dash', 'pause'];
 
 export function parseInputs(doc) {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc) || !Array.isArray(doc.frames)) {
@@ -33,7 +33,7 @@ export class InputTimeline {
   constructor(frames = []) {
     this.frames = frames;
     this.i = 0;
-    this.cur = { move: [0, 0], cam_yaw_deg: 0, jump: false, interact: false, pulse: false, dash: false };
+    this.cur = { move: [0, 0], cam_yaw_deg: 0, jump: false, interact: false, pulse: false, dash: false, pause: false };
   }
   // Must be called with tick = 0,1,2,... in order. Returns held values for that tick.
   at(tick) {

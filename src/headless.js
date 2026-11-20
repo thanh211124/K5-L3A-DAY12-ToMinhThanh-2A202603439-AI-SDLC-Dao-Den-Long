@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Headless runner — Test Contract v1.0 section B.
-// node src/headless.js --seed <int> --night 1 [--scenario f] [--inputs f] --ticks <int> --out <f.jsonl> [--snapshot-every 10]
+// Headless runner — Test Contract v1.1 section B.
+// node src/headless.js --seed <int> --night <1|2|3> [--scenario f] [--inputs f] --ticks <int> --out <f.jsonl> [--snapshot-every 10]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { FormatError } from './core/sim.js';
 import { run } from './core/runner.js';
@@ -38,7 +38,8 @@ function parseArgs(argv) {
   if (a.seed === undefined) fail(1, '--seed is required');
   if (a.ticks === undefined || a.ticks < 0) fail(1, '--ticks is required (>= 0)');
   if (!a.out) fail(1, '--out is required');
-  if (a.night !== undefined && a.night !== 1) fail(1, `night ${a.night} not available (only 1)`);
+  if (a.night === undefined) a.night = 1;
+  if (![1, 2, 3].includes(a.night)) fail(1, `night ${a.night} not available (1, 2, 3)`);
   if (a.snapshotEvery <= 0) fail(1, '--snapshot-every must be > 0');
   return a;
 }
@@ -63,7 +64,7 @@ function readJson(path, what) {
   const inputs = a.inputs ? readJson(a.inputs, 'inputs') : null;
   let out;
   try {
-    out = run({ seed: a.seed, scenario, inputs, ticks: a.ticks, snapshotEvery: a.snapshotEvery });
+    out = run({ seed: a.seed, night: a.night, scenario, inputs, ticks: a.ticks, snapshotEvery: a.snapshotEvery });
   } catch (e) {
     if (e instanceof FormatError) fail(2, `invalid scenario/inputs: ${e.message}`);
     fail(1, e.stack || String(e));

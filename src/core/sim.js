@@ -1,207 +1,468 @@
 // Đảo Đèn Lồng — pure game simulation (no DOM, no GPU). Shared by headless CLI and browser.
-// Tick model (Test Contract v1.0): state 0 = after scenario setup; step(k) consumes input k -> state k+1.
-//
-// Order of operations inside one step (documented in docs/notes/phase-1.md):
-//  1. timers tick down (invuln, pulse cooldown, shade stun)
-//  2. player move (camera-relative) + jump/gravity, clamp to island
-//  3. auto pickup motes (pickup_radius, while carried < capacity)
-//  4. interact -> deposit into nearest unlit lantern within interact_radius
-//  5. pulse -> stun + push shades within pulse_radius
-//  6. shades move (chase), then are kept out of lit lanterns' safe_radius and on the island
-//  7. shade hit check (non-stunned shade within shade_hit_radius, player not invulnerable)
-//  8. spawning (only when random_motes / random_shades are enabled)
-//  9. end checks: all lanterns lit -> won (all_lit); flames 0 -> lost (no_flames); time 0 -> lost (dawn)
+// Test Contract v1.1 / Ticket-02. Mandatory order inside one tick:
+//   1 read input (pause first; if we just paused, stop)   2 timers   3 move player (jump, dash, pads, wind) + fall check
+//   4 pickup motes & charms   5 lantern interact   6 safe zones   7 pulse   8 move shades & drifters
+//   9 contacts (drifters steal first, then shades hit, by ascending id)   10 spawns   11 win/lose   (12 snapshot: runner)
+// While paused: tick advances, sim_tick / time / cooldowns / spawns / TTL do not.
 
-import { TUNING, WORLD } from './tuning.js';
+import { TUNING as T, RULES as R } from './tuning.js';
+import { NIGHTS } from './maps.js';
 import { makeRng } from './rng.js';
 
-const T = TUNING;
-const DT = 1 / WORLD.tick_rate;
-const secToTicks = (s) => Math.round(s * WORLD.tick_rate);
-
+const DT = 1 / R.tick_rate;
+const EPS = 1e-9; // float tolerance for every "within radius r" (distance <= r) test
 export const r3 = (v) => {
   const x = Math.round(v * 1000) / 1000;
   return x === 0 ? 0 : x;
 };
 const distXZ = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const idNum = (id) => {
+  const n = parseInt(String(id).replace(/^\D+/, ''), 10);
+  return Number.isFinite(n) ? n : 1e9;
+};
+const byId = (a, b) => idNum(a.id) - idNum(b.id) || String(a.id).localeCompare(String(b.id));
 
 export class FormatError extends Error {}
-
-function isNum(v) {
-  return typeof v === 'number' && Number.isFinite(v);
-}
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 function vec3(v, what) {
   if (!Array.isArray(v) || v.length !== 3 || !v.every(isNum)) throw new FormatError(`${what} must be [x,y,z] numbers`);
   return [v[0], v[1], v[2]];
 }
-
-export function defaultLanterns() {
-  const out = [];
-  for (let i = 0; i < T.lantern_count_night1; i++) {
-    const a = (i * 2 * Math.PI) / T.lantern_count_night1;
-    // L1 sits at (0,0,25) like the contract example.
-    out.push({ id: `L${i + 1}`, pos: [r3(WORLD.lantern_ring_radius * Math.sin(a)), 0, r3(WORLD.lantern_ring_radius * Math.cos(a))], lit: false, deposited: 0 });
-  }
-  return out;
+function intField(o, k, what) {
+  if (o[k] === undefined) return undefined;
+  if (!Number.isInteger(o[k]) || o[k] < 0) throw new FormatError(`${what}.${k} must be an int >= 0`);
+  return o[k];
+}
+function boolField(o, k) {
+  if (o[k] === undefined) return undefined;
+  if (typeof o[k] !== 'boolean') throw new FormatError(`${k} must be boolean`);
+  return o[k];
 }
 
+const SHADE_STATES = ['spawning', 'wander', 'chase', 'recoil', 'stunned'];
+const DRIFTER_STATES = ['idle', 'chase', 'flee', 'removed'];
+
 export class Sim {
-  constructor({ seed = 1, scenario = null } = {}) {
+  constructor({ seed = 1, night = 1, scenario = null } = {}) {
+    const map = NIGHTS[night];
+    if (!map) throw new Error(`night ${night} not available (1, 2, 3)`);
+    if (scenario !== null && !isObj(scenario)) throw new FormatError('scenario must be an object');
+    const sc = scenario || {};
+    this.map = map;
+    this.night = night;
     this.rng = makeRng(seed);
-    this.steps = 0;
+    this.tick = 0;
+    this.simTick = 0;
+    this.paused = false;
     this.state = 'playing';
-    this.score = 0;
     this.result = null;
-    this.player = { pos: [0, 0, 0], vy: 0, flames: T.flames, carried: 0, invuln: 0, cooldown: 0 };
-    this.lanterns = defaultLanterns();
+    this.score = 0;
+    this.prev = { jump: false, interact: false, pulse: false, dash: false, pause: false };
+    this.next = { M: 1, S: 1, D: 1 };
+    this.player = {
+      pos: [...map.start], vel: [0, 0, 0], grounded: true, facing: [0, 1],
+      flames: T.flames, carried: 0, invuln: 0, dashCd: 0, dashTicks: 0, dashDir: [0, 1],
+      pulseCd: 0, charm: 0, launch: null, respawn: 0,
+    };
+    this.lanterns = map.lanterns.map((p, i) => ({ id: `L${i + 1}`, pos: [...p], lit: false, deposited: 0 }));
     this.motes = [];
     this.shades = [];
-    this.nextMote = 1;
-    this.nextShade = 1;
-    this.randomMotes = true;
-    this.randomShades = true;
-    this.startTicks = secToTicks(T.night1_duration_s);
-    this.moteTimer = 0;
-    this.shadeTimer = 0;
-    this.prevButtons = { jump: false, interact: false, pulse: false, dash: false };
-    this.stats = { hits: 0, pulses: 0, stunned: 0, picked: 0 };
+    this.drifters = [];
+    this.charms = map.charms.map((p, i) => ({ id: `C${i + 1}`, pos: [...p], available: true, respawn: 0 }));
+    this.wind = { active: false, dir: null, left: 0 };
+    this.randomMotes = boolField(sc, 'random_motes') ?? true;
+    this.randomShades = boolField(sc, 'random_shades') ?? true;
+    this.randomDrifters = (boolField(sc, 'random_drifters') ?? true) && map.drifters;
+    this.windEnabled = (boolField(sc, 'wind_enabled') ?? true) && map.wind;
+    this.startTimeS = map.duration_s;
+    this.stats = { hits: 0, falls: 0, pulses: 0, stunned: 0, steals: 0, deposited: 0 };
 
-    const sc = scenario || {};
-    if (scenario !== null && (typeof scenario !== 'object' || Array.isArray(scenario))) throw new FormatError('scenario must be an object');
-    if ('random_motes' in sc) {
-      if (typeof sc.random_motes !== 'boolean') throw new FormatError('random_motes must be boolean');
-      this.randomMotes = sc.random_motes;
-    }
-    if ('random_shades' in sc) {
-      if (typeof sc.random_shades !== 'boolean') throw new FormatError('random_shades must be boolean');
-      this.randomShades = sc.random_shades;
-    }
+    // ---- player ----
     if (sc.player !== undefined) {
       const p = sc.player;
-      if (typeof p !== 'object' || p === null || Array.isArray(p)) throw new FormatError('player must be an object');
+      if (!isObj(p)) throw new FormatError('player must be an object');
       if (p.pos !== undefined) this.player.pos = vec3(p.pos, 'player.pos');
-      if (p.carried !== undefined) {
-        if (!Number.isInteger(p.carried) || p.carried < 0) throw new FormatError('player.carried must be int >= 0');
-        this.player.carried = p.carried;
-      }
-      if (p.flames !== undefined) {
-        if (!Number.isInteger(p.flames) || p.flames < 0) throw new FormatError('player.flames must be int >= 0');
-        this.player.flames = p.flames;
-      }
+      const P = this.player;
+      P.carried = intField(p, 'carried', 'player') ?? P.carried;
+      P.flames = intField(p, 'flames', 'player') ?? P.flames;
+      P.invuln = intField(p, 'invuln_ticks', 'player') ?? 0;
+      P.dashCd = intField(p, 'dash_cd_ticks', 'player') ?? 0;
+      P.pulseCd = intField(p, 'pulse_cd_ticks', 'player') ?? 0;
+      P.charm = intField(p, 'charm_ticks', 'player') ?? 0;
     }
+    const g = map.ground(this.player.pos[0], this.player.pos[2]);
+    this.player.grounded = g !== null && Math.abs(this.player.pos[1] - g) < 1e-6;
+
+    // ---- lanterns ----
     if (sc.lanterns !== undefined) {
       if (!Array.isArray(sc.lanterns)) throw new FormatError('lanterns must be an array');
       for (const l of sc.lanterns) {
-        if (typeof l !== 'object' || l === null) throw new FormatError('lantern entry must be an object');
-        const target = this.lanterns.find((x) => x.id === l.id);
-        if (!target) throw new FormatError(`unknown lantern id ${l.id}`);
-        if (l.pos !== undefined) target.pos = vec3(l.pos, `lantern ${l.id}.pos`);
+        if (!isObj(l)) throw new FormatError('lantern entry must be an object');
+        const t = this.lanterns.find((x) => x.id === l.id);
+        if (!t) throw new FormatError(`unknown lantern id ${l.id} for night ${night}`);
+        if (l.pos !== undefined) t.pos = vec3(l.pos, `lantern ${l.id}.pos`);
         if (l.deposited !== undefined) {
           if (!isNum(l.deposited) || l.deposited < 0) throw new FormatError('lantern.deposited must be >= 0');
-          target.deposited = l.deposited;
+          t.deposited = l.deposited;
         }
         if (l.lit !== undefined) {
           if (typeof l.lit !== 'boolean') throw new FormatError('lantern.lit must be boolean');
-          target.lit = l.lit;
-          if (l.lit && l.deposited === undefined) target.deposited = T.lantern_cost;
+          t.lit = l.lit;
+          if (l.lit && l.deposited === undefined) t.deposited = T.lantern_cost;
         }
-        if (target.deposited >= T.lantern_cost) target.lit = true;
+        if (t.deposited >= T.lantern_cost) t.lit = true;
       }
     }
     if (sc.time_left_s !== undefined) {
       if (!isNum(sc.time_left_s) || sc.time_left_s < 0) throw new FormatError('time_left_s must be >= 0');
-      this.startTicks = secToTicks(sc.time_left_s);
+      this.startTimeS = sc.time_left_s;
     }
-    this.startTimeS = sc.time_left_s !== undefined ? sc.time_left_s : T.night1_duration_s;
+    this.endTick = Math.round(this.startTimeS * R.tick_rate);
 
+    // ---- motes ----
     if (sc.motes !== undefined) {
       if (!Array.isArray(sc.motes)) throw new FormatError('motes must be an array');
       for (const m of sc.motes) {
-        if (Array.isArray(m)) this.addMote(vec3(m, 'mote'));
-        else if (m && typeof m === 'object') this.addMote(vec3(m.pos, 'mote.pos'), m.id);
-        else throw new FormatError('mote must be [x,y,z] or {pos}');
+        if (Array.isArray(m)) this.addMote(vec3(m, 'mote'), 'random');
+        else if (isObj(m)) {
+          const kind = m.kind ?? 'random';
+          if (kind !== 'random' && kind !== 'dropped') throw new FormatError('mote.kind must be random|dropped');
+          const ttl = intField(m, 'ttl_ticks', 'mote') ?? (m.ttl_s !== undefined && isNum(m.ttl_s) ? Math.round(m.ttl_s * 60) : R.dropped_ttl);
+          this.addMote(vec3(m.pos, 'mote.pos'), kind, kind === 'dropped' ? ttl : null, m.id);
+        } else throw new FormatError('mote must be [x,y,z] or {pos}');
       }
     } else if (this.randomMotes) {
-      for (let i = 0; i < WORLD.initial_motes; i++) this.addMote(this.randomMotePos());
+      const idx = map.moteSpawns.map((_, i) => i);
+      for (let i = idx.length - 1; i > 0; i--) {
+        const j = Math.floor(this.rng() * (i + 1));
+        [idx[i], idx[j]] = [idx[j], idx[i]];
+      }
+      for (const i of idx.slice(0, R.mote_initial)) this.addMote([...map.moteSpawns[i]], 'random', null, undefined, i);
     }
+
+    // ---- shades (none at start by default: first spawn at tick 300) ----
     if (sc.shades !== undefined) {
       if (!Array.isArray(sc.shades)) throw new FormatError('shades must be an array');
       for (const s of sc.shades) {
-        if (!s || typeof s !== 'object' || Array.isArray(s)) throw new FormatError('shade must be an object');
+        if (!isObj(s)) throw new FormatError('shade must be an object');
         if (s.id !== undefined && typeof s.id !== 'string') throw new FormatError('shade.id must be a string');
-        this.addShade(vec3(s.pos, 'shade.pos'), s.id);
+        const state = s.state ?? 'wander';
+        if (!SHADE_STATES.includes(state)) throw new FormatError(`shade.state must be one of ${SHADE_STATES}`);
+        const sh = this.addShade(vec3(s.pos, 'shade.pos'), s.id, state);
+        const left = intField(s, 'state_ticks_left', 'shade');
+        if (state === 'stunned') sh.st = left ?? R.stun_ticks;
+        if (state === 'spawning') sh.st = left ?? R.shade_spawning_ticks;
+        if (state === 'recoil') {
+          sh.st = left ?? R.recoil_ticks;
+          sh.dir = this.awayFromPlayer(sh.pos);
+        }
       }
-    } else if (this.randomShades) {
-      for (let i = 0; i < WORLD.initial_shades; i++) this.addShade(this.randomShadePos());
+    }
+
+    // ---- drifters ----
+    if (sc.drifters !== undefined) {
+      if (!Array.isArray(sc.drifters)) throw new FormatError('drifters must be an array');
+      for (const d of sc.drifters) {
+        if (!isObj(d)) throw new FormatError('drifter must be an object');
+        const state = d.state ?? 'idle';
+        if (!DRIFTER_STATES.includes(state)) throw new FormatError(`drifter.state must be one of ${DRIFTER_STATES}`);
+        const dr = this.addDrifter(vec3(d.pos, 'drifter.pos'), d.id);
+        dr.state = state;
+        dr.stolen = intField(d, 'stolen', 'drifter') ?? 0;
+        dr.removeAt = intField(d, 'state_ticks_left', 'drifter') ?? (state === 'flee' ? R.drifter_flee_ticks : 0);
+        if (dr.stolen > 0 || state === 'flee') dr.stoleOnce = true;
+      }
+    }
+
+    // ---- charms ----
+    if (sc.charms !== undefined) {
+      if (!Array.isArray(sc.charms)) throw new FormatError('charms must be an array');
+      this.charms = sc.charms.map((c, i) => {
+        if (!isObj(c)) throw new FormatError('charm must be an object');
+        const id = c.id ?? `C${i + 1}`;
+        const def = map.charms[idNum(id) - 1];
+        const pos = c.pos !== undefined ? vec3(c.pos, 'charm.pos') : def ? [...def] : null;
+        if (!pos) throw new FormatError(`charm ${id} needs pos on night ${night}`);
+        const available = boolField(c, 'available') ?? true;
+        const respawn = intField(c, 'respawn_ticks', 'charm') ?? (available ? 0 : R.charm_respawn);
+        return { id, pos, available, respawn: available ? 0 : respawn };
+      });
     }
   }
 
   // ---------- helpers ----------
-  addMote(pos, id) {
-    const mid = id || `M${this.nextMote++}`;
-    this.motes.push({ id: mid, pos });
-    return mid;
+  ground(x, z) {
+    return this.map.ground(x, z);
   }
-  addShade(pos, id) {
+  addMote(pos, kind, ttl = null, id, point = -1) {
+    const m = { id: id || `M${this.next.M++}`, pos, kind, ttl, point, born: this.simTick };
+    this.motes.push(m);
+    return m;
+  }
+  addShade(pos, id, state = 'spawning') {
     let sid = id;
-    if (!sid) {
-      do sid = `S${this.nextShade++}`;
-      while (this.shades.some((s) => s.id === sid));
-    }
-    this.shades.push({ id: sid, pos, stun: 0 });
-    return sid;
+    while (!sid || (!id && this.shades.some((s) => s.id === sid))) sid = `S${this.next.S++}`;
+    const s = { id: sid, pos, state, st: state === 'spawning' ? R.shade_spawning_ticks : 0, dir: [1, 0], pushLeft: 0, evictLeft: 0, evictFrom: null, wp: null, born: this.simTick };
+    this.shades.push(s);
+    return s;
   }
-  randomMotePos() {
-    const R = WORLD.island_radius - 2;
-    for (let i = 0; i < 20; i++) {
-      const a = this.rng() * Math.PI * 2;
-      const d = WORLD.mote_min_dist_from_origin + Math.sqrt(this.rng()) * (R - WORLD.mote_min_dist_from_origin);
-      const p = [r3(Math.sin(a) * d), 0, r3(Math.cos(a) * d)];
-      if (distXZ(p, this.player.pos) > T.pickup_radius) return p;
-    }
-    return [0, 0, R];
+  addDrifter(pos, id) {
+    let did = id;
+    while (!did || (!id && this.drifters.some((d) => d.id === did))) did = `D${this.next.D++}`;
+    const d = { id: did, pos, state: 'idle', stolen: 0, removeAt: 0, stoleOnce: false, wp: null, born: this.simTick };
+    this.drifters.push(d);
+    return d;
   }
-  randomShadePos() {
-    let p;
-    for (let i = 0; i < 20; i++) {
-      const a = this.rng() * Math.PI * 2;
-      p = [r3(Math.sin(a) * WORLD.shade_spawn_radius), WORLD.shade_height, r3(Math.cos(a) * WORLD.shade_spawn_radius)];
-      const farFromPlayer = distXZ(p, this.player.pos) >= WORLD.shade_spawn_min_dist;
-      const outsideSafe = this.lanterns.every((l) => !l.lit || distXZ(p, l.pos) > T.safe_radius);
-      if (farFromPlayer && outsideSafe) return p;
-    }
-    return p;
+  awayFromPlayer(pos) {
+    const P = this.player.pos;
+    const dx = pos[0] - P[0];
+    const dz = pos[2] - P[2];
+    const d = Math.hypot(dx, dz);
+    return d < 1e-9 ? [1, 0] : [dx / d, dz / d];
   }
   get timeLeftS() {
-    return Math.max(0, this.startTimeS - this.steps / WORLD.tick_rate);
+    return Math.max(0, this.startTimeS - this.simTick / R.tick_rate);
   }
   get litCount() {
     return this.lanterns.filter((l) => l.lit).length;
   }
+  inSafeZone(x, z) {
+    return this.lanterns.some((l) => l.lit && Math.hypot(x - l.pos[0], z - l.pos[2]) < T.safe_radius);
+  }
+
+  // Horizontal move with terrain: cannot walk up more than step_height; canVoid=false blocks walking off ground.
+  // Returns true if fully moved.
+  moveXZ(pos, nx, nz, footY, canVoid) {
+    const ok = (x, z) => {
+      const h = this.ground(x, z);
+      if (h === null) return canVoid;
+      return h <= footY + R.step_height;
+    };
+    if (ok(nx, nz)) {
+      pos[0] = nx;
+      pos[2] = nz;
+      return true;
+    }
+    if (ok(nx, pos[2])) pos[0] = nx;
+    else if (ok(pos[0], nz)) pos[2] = nz;
+    return false;
+  }
+  hoverY(e, hover) {
+    const h = this.ground(e.pos[0], e.pos[2]);
+    if (h !== null) e.pos[1] = h + hover;
+  }
 
   // ---------- main step ----------
-  // input: { move:[x,z], cam_yaw_deg, jump, interact, pulse, dash } (held values); edges computed here.
   step(input = {}) {
     const ev = [];
     if (this.state !== 'playing') return ev;
-    this.steps++;
-    const tick = this.steps;
-    const emit = (name, data) => ev.push({ type: 'event', tick, name, data });
+    this.tick++;
+    const emit = (name, data = {}) => ev.push({ type: 'event', tick: this.tick, name, data });
     const P = this.player;
 
+    // 1. input (pause first)
     const btn = {};
-    for (const k of ['jump', 'interact', 'pulse', 'dash']) {
+    for (const k of ['jump', 'interact', 'pulse', 'dash', 'pause']) {
       const now = !!input[k];
-      btn[k] = now && !this.prevButtons[k];
-      this.prevButtons[k] = now;
+      btn[k] = now && !this.prev[k];
+      this.prev[k] = now;
+    }
+    if (btn.pause) {
+      this.paused = !this.paused;
+      emit(this.paused ? 'paused' : 'resumed');
+      if (this.paused) return ev;
+    } else if (this.paused) return ev;
+    this.simTick++;
+
+    // 2. timers
+    if (P.invuln > 0) P.invuln--;
+    if (P.dashCd > 0) P.dashCd--;
+    if (P.pulseCd > 0) P.pulseCd--;
+    if (P.charm > 0) P.charm--;
+    let respawnNow = false;
+    if (P.respawn > 0 && --P.respawn === 0) respawnNow = true;
+    for (const s of this.shades) {
+      if ((s.state === 'stunned' || s.state === 'spawning') && s.st > 0 && --s.st === 0) {
+        s.state = 'wander';
+        s.wp = null;
+      }
+    }
+    for (const m of this.motes) if (m.kind === 'dropped' && m.ttl > 0) m.ttl--;
+    this.motes = this.motes.filter((m) => m.kind !== 'dropped' || m.ttl > 0);
+    for (const c of this.charms) if (!c.available && c.respawn > 0 && --c.respawn === 0) c.available = true;
+
+    // 3. player movement
+    const alive = P.respawn === 0;
+    if (respawnNow) {
+      P.pos = [...this.map.start];
+      P.vel = [0, 0, 0];
+      P.grounded = true;
+      P.launch = null;
+      P.dashTicks = 0;
+      P.invuln = R.invuln_ticks;
+    } else if (alive) this.movePlayer(input, btn, emit);
+
+    // 4. pickup
+    if (alive && !respawnNow) {
+      for (let i = 0; i < this.motes.length && P.carried < T.carry_capacity; ) {
+        const m = this.motes[i];
+        if (m.born < this.simTick && distXZ(m.pos, P.pos) <= T.pickup_radius + EPS && Math.abs(P.pos[1] - m.pos[1]) <= R.pickup_dy) {
+          this.motes.splice(i, 1);
+          P.carried++;
+          emit('mote_picked', { carried: P.carried });
+        } else i++;
+      }
+      for (const c of this.charms) {
+        if (c.available && distXZ(c.pos, P.pos) <= T.pickup_radius + EPS && Math.abs(P.pos[1] - c.pos[1]) <= R.pickup_dy) {
+          c.available = false;
+          c.respawn = R.charm_respawn;
+          P.charm = R.charm_ticks;
+          P.dashCd = 0;
+          emit('charm_picked', { charm_id: c.id, charm_ticks: R.charm_ticks });
+        }
+      }
     }
 
-    // 1. timers
-    if (P.invuln > 0) P.invuln--;
-    if (P.cooldown > 0) P.cooldown--;
-    for (const s of this.shades) if (s.stun > 0) s.stun--;
+    // 5. interact
+    const newlyLit = [];
+    if (alive && btn.interact && P.carried > 0) {
+      let best = null;
+      let bestD = Infinity;
+      for (const l of [...this.lanterns].sort(byId)) {
+        if (l.lit) continue;
+        const d = distXZ(l.pos, P.pos);
+        if (d <= T.interact_radius + EPS && d < bestD) {
+          best = l;
+          bestD = d;
+        }
+      }
+      if (best) {
+        const amount = Math.min(P.carried, T.lantern_cost - best.deposited);
+        if (amount > 0) {
+          P.carried -= amount;
+          best.deposited += amount;
+          this.score += amount * T.score.per_mote;
+          this.stats.deposited += amount;
+          emit('deposit', { lantern_id: best.id, amount, deposited: best.deposited });
+          if (best.deposited >= T.lantern_cost) {
+            best.lit = true;
+            this.score += T.score.per_lantern;
+            newlyLit.push(best);
+            emit('lantern_lit', { lantern_id: best.id });
+          }
+        }
+      }
+    }
 
-    // 2. movement
+    // 6. safe zones: shades caught inside a newly lit lantern are evicted to the edge within 30 ticks
+    for (const l of newlyLit) {
+      for (const s of this.shades) {
+        if (distXZ(s.pos, l.pos) < T.safe_radius) {
+          s.evictLeft = R.safe_evict_ticks;
+          s.evictFrom = l;
+        }
+      }
+    }
+
+    // 7. pulse
+    if (alive && btn.pulse && P.pulseCd === 0 && P.carried >= T.pulse_cost) {
+      P.carried -= T.pulse_cost;
+      P.pulseCd = R.pulse_cd_ticks;
+      const c = [P.pos[0], P.pos[1] + R.pulse_center_dy, P.pos[2]];
+      const stunned = [];
+      for (const s of [...this.shades].sort(byId)) {
+        if (dist3(s.pos, c) <= T.pulse_radius + EPS) {
+          s.state = 'stunned';
+          s.st = R.stun_ticks;
+          s.pushLeft = R.push_ticks;
+          const dx = s.pos[0] - c[0];
+          const dz = s.pos[2] - c[2];
+          const d = Math.hypot(dx, dz);
+          s.dir = d < 1e-9 ? [1, 0] : [dx / d, dz / d];
+          stunned.push(s.id);
+        }
+      }
+      for (const d of [...this.drifters].sort(byId)) {
+        if (d.state === 'removed' || dist3(d.pos, c) > T.pulse_radius + EPS) continue;
+        if (d.state === 'chase') {
+          d.state = 'flee';
+          d.removeAt = this.simTick + R.drifter_flee_ticks;
+          d.stoleOnce = true;
+        } else if (d.state === 'flee' && d.stolen > 0) {
+          const amount = d.stolen;
+          for (let i = 0; i < amount; i++) {
+            const g = this.ground(d.pos[0], d.pos[2]);
+            this.addMote([d.pos[0], g ?? 0, d.pos[2]], 'dropped', R.dropped_ttl);
+          }
+          d.stolen = 0;
+          d.removeAt = this.simTick + R.drifter_drop_flee_ticks;
+          emit('drifter_drop', { drifter_id: d.id, amount });
+        }
+      }
+      this.score += stunned.length * T.score.per_stun;
+      this.stats.pulses++;
+      this.stats.stunned += stunned.length;
+      emit('pulse', { stunned_ids: stunned });
+    }
+
+    // 8. move shades and drifters
+    this.moveShades();
+    this.moveDrifters();
+
+    // 9. contacts: drifters steal first, then shades hit (ascending id)
+    if (alive && !respawnNow) {
+      for (const d of [...this.drifters].sort(byId)) {
+        if ((d.state === 'idle' || d.state === 'chase') && !d.stoleOnce && d.born < this.simTick && P.carried > 0 && distXZ(d.pos, P.pos) <= R.drifter_touch + EPS) {
+          const amount = Math.min(R.drifter_steal_max, P.carried);
+          P.carried -= amount;
+          d.stolen = amount;
+          d.stoleOnce = true;
+          d.state = 'flee';
+          d.removeAt = this.simTick + R.drifter_flee_ticks;
+          this.stats.steals++;
+          emit('drifter_steal', { drifter_id: d.id, amount, carried: P.carried });
+        }
+      }
+      if (P.invuln === 0) {
+        for (const s of [...this.shades].sort(byId)) {
+          if ((s.state !== 'wander' && s.state !== 'chase') || s.evictLeft > 0 || s.born >= this.simTick) continue;
+          if (distXZ(s.pos, P.pos) <= T.shade_hit_radius + EPS && Math.abs(s.pos[1] - P.pos[1]) <= R.hit_dy + EPS) {
+            P.flames = Math.max(0, P.flames - 1);
+            const dropped = Math.floor(P.carried * T.hit_drop_ratio);
+            P.carried -= dropped;
+            for (let i = 0; i < dropped; i++) {
+              const a = this.rng() * Math.PI * 2;
+              const r = R.drop_ring[0] + this.rng() * (R.drop_ring[1] - R.drop_ring[0]);
+              const x = P.pos[0] + Math.cos(a) * r;
+              const z = P.pos[2] + Math.sin(a) * r;
+              this.addMote([x, this.ground(x, z) ?? P.pos[1], z], 'dropped', R.dropped_ttl);
+            }
+            P.invuln = R.invuln_ticks;
+            s.state = 'recoil';
+            s.st = R.recoil_ticks;
+            s.dir = this.awayFromPlayer(s.pos);
+            this.stats.hits++;
+            emit('player_hit', { by: 'shade', flames: P.flames, dropped });
+            break; // at most one flame lost per tick
+          }
+        }
+      }
+    }
+
+    // 10. spawns
+    this.spawn(emit);
+
+    // 11. win / lose
+    if (P.flames <= 0) this.finish('lost', 'no_flames', emit);
+    else if (this.litCount === this.lanterns.length) this.finish('won', 'all_lit', emit);
+    else if (this.simTick >= this.endTick) this.finish('lost', 'dawn', emit);
+    return ev;
+  }
+
+  movePlayer(input, btn, emit) {
+    const P = this.player;
     let [mx, mz] = Array.isArray(input.move) ? input.move : [0, 0];
     mx = Math.max(-1, Math.min(1, mx || 0));
     mz = Math.max(-1, Math.min(1, mz || 0));
@@ -213,180 +474,277 @@ export class Sim {
     const th = ((input.cam_yaw_deg || 0) * Math.PI) / 180;
     const wx = mx * Math.cos(th) + mz * Math.sin(th);
     const wz = -mx * Math.sin(th) + mz * Math.cos(th);
-    P.pos[0] += wx * T.player_speed * DT;
-    P.pos[2] += wz * T.player_speed * DT;
-    const onGround = P.pos[1] <= 0;
-    if (btn.jump && onGround) P.vy = WORLD.jump_speed;
-    if (P.vy !== 0 || P.pos[1] > 0) {
-      P.vy -= WORLD.gravity * DT;
-      P.pos[1] += P.vy * DT;
-      if (P.pos[1] <= 0) {
-        P.pos[1] = 0;
-        P.vy = 0;
+    const wl = Math.hypot(wx, wz);
+    if (wl > 1e-9) P.facing = [wx / wl, wz / wl];
+
+    // dash (edge-triggered; ignored while dashing; cooldown 90 ticks from dash start unless Bùa Gió active)
+    if (btn.dash && P.dashTicks === 0 && (P.dashCd === 0 || P.charm > 0)) {
+      let dir;
+      if (wl > 1e-9) dir = [wx / wl, wz / wl];
+      else if (P.launch) {
+        const l = Math.hypot(P.launch[0], P.launch[1]);
+        dir = [P.launch[0] / l, P.launch[1] / l];
+      } else dir = [...P.facing];
+      P.dashDir = dir;
+      P.dashTicks = R.dash_ticks;
+      P.dashCd = P.charm > 0 ? 0 : R.dash_cd_ticks;
+      emit('dash');
+    }
+
+    const speed = P.charm > 0 ? R.charm_speed : T.player_speed;
+    let vx, vz;
+    const dashing = P.dashTicks > 0;
+    if (dashing) {
+      vx = P.dashDir[0] * T.dash_speed;
+      vz = P.dashDir[1] * T.dash_speed;
+      P.dashTicks--;
+    } else if (P.launch) {
+      [vx, vz] = P.launch;
+    } else {
+      vx = wx * speed;
+      vz = wz * speed;
+    }
+    if (this.wind.active) {
+      const a = (this.wind.dir * Math.PI) / 180;
+      vx += Math.cos(a) * R.wind_speed;
+      vz += Math.sin(a) * R.wind_speed;
+    }
+    if (btn.jump && P.grounded && !dashing) {
+      P.vel[1] = R.jump_speed;
+      P.grounded = false;
+    }
+
+    this.moveXZ(P.pos, P.pos[0] + vx * DT, P.pos[2] + vz * DT, P.pos[1], true);
+    const h = this.ground(P.pos[0], P.pos[2]);
+    if (dashing) {
+      P.vel[1] = 0; // airborne dash holds altitude
+      if (h !== null && h >= P.pos[1] - R.step_height && h <= P.pos[1] + R.step_height && P.grounded) P.pos[1] = h;
+      else P.grounded = false;
+    } else if (P.grounded && h !== null && h >= P.pos[1] - R.step_height && P.vel[1] <= 0) {
+      P.pos[1] = h;
+      P.vel[1] = 0;
+    } else {
+      P.grounded = false;
+      P.vel[1] -= R.gravity * DT;
+      P.pos[1] += P.vel[1] * DT;
+      if (h !== null && P.pos[1] <= h) {
+        P.pos[1] = h;
+        P.vel[1] = 0;
+        P.grounded = true;
+        P.launch = null;
       }
     }
-    clampIsland(P.pos);
+    P.vel[0] = vx;
+    P.vel[2] = vz;
 
-    // 3. pickup
-    for (let i = 0; i < this.motes.length && P.carried < T.carry_capacity; ) {
-      if (distXZ(this.motes[i].pos, P.pos) <= T.pickup_radius) {
-        this.motes.splice(i, 1);
-        P.carried++;
-        this.score += T.score.per_mote;
-        this.stats.picked++;
-        emit('mote_picked', { carried: P.carried });
-      } else i++;
-    }
-
-    // 4. interact / deposit
-    if (btn.interact && P.carried > 0) {
-      let best = null;
-      let bestD = Infinity;
-      for (const l of this.lanterns) {
-        if (l.lit) continue;
-        const d = distXZ(l.pos, P.pos);
-        if (d <= T.interact_radius && d < bestD) {
-          best = l;
-          bestD = d;
+    // launch pads: foot touching the pad top
+    if (P.grounded) {
+      for (const pad of this.map.pads) {
+        if (distXZ(pad.pos, P.pos) <= R.pad_radius + EPS && Math.abs(P.pos[1] - pad.pos[1]) < 0.05) {
+          P.launch = [...pad.vel];
+          P.vel = [pad.vel[0], pad.vy, pad.vel[1]];
+          P.grounded = false;
         }
       }
-      if (best) {
-        const amount = Math.min(P.carried, T.lantern_cost - best.deposited);
-        if (amount > 0) {
-          P.carried -= amount;
-          best.deposited += amount;
-          emit('deposit', { lantern_id: best.id, amount, deposited: best.deposited });
-          if (best.deposited >= T.lantern_cost) {
-            best.lit = true;
-            this.score += T.score.per_lantern;
-            emit('lantern_lit', { lantern_id: best.id });
-          }
-        }
-      }
     }
 
-    // 5. pulse
-    if (btn.pulse && P.cooldown === 0 && P.carried >= T.pulse_cost) {
-      P.carried -= T.pulse_cost;
-      P.cooldown = secToTicks(T.pulse_cooldown_s);
-      const stunned = [];
-      for (const s of this.shades) {
-        const d = distXZ(s.pos, P.pos);
-        if (d <= T.pulse_radius) {
-          s.stun = secToTicks(T.pulse_stun_s);
-          let dx = s.pos[0] - P.pos[0];
-          let dz = s.pos[2] - P.pos[2];
-          if (d < 1e-9) {
-            dx = 1;
-            dz = 0;
-          } else {
-            dx /= d;
-            dz /= d;
-          }
-          s.pos[0] += dx * T.pulse_push_m;
-          s.pos[2] += dz * T.pulse_push_m;
-          stunned.push(s.id);
-        }
-      }
-      this.score += stunned.length * T.score.per_stun;
-      this.stats.pulses++;
-      this.stats.stunned += stunned.length;
-      emit('pulse', { stunned_ids: stunned });
+    // fall off the island: once, ignores invulnerability
+    if (P.pos[1] < R.fall_y) {
+      const lost = P.carried;
+      P.carried = 0;
+      P.flames = Math.max(0, P.flames - 1);
+      P.vel = [0, 0, 0];
+      P.launch = null;
+      P.dashTicks = 0;
+      P.respawn = R.respawn_wait;
+      this.stats.falls++;
+      emit('player_hit', { by: 'fall', flames: P.flames, dropped: 0, lost });
     }
+  }
 
-    // 6. shades move
-    const step = T.shade_speed * DT;
+  moveShades() {
+    const P = this.player;
+    const playerAway = P.respawn > 0;
+    const speed = this.map.shadeSpeed * DT;
     for (const s of this.shades) {
-      if (s.stun === 0) {
-        const dx = P.pos[0] - s.pos[0];
-        const dz = P.pos[2] - s.pos[2];
+      const foot = s.pos[1] - R.shade_hover;
+      if (s.evictLeft > 0) {
+        const l = s.evictFrom.pos;
+        let dx = s.pos[0] - l[0];
+        let dz = s.pos[2] - l[2];
         const d = Math.hypot(dx, dz);
-        if (d > 1e-9) {
-          const m = Math.min(step, d);
-          s.pos[0] += (dx / d) * m;
-          s.pos[2] += (dz / d) * m;
+        if (d < 1e-9) [dx, dz] = [1, 0];
+        else [dx, dz] = [dx / d, dz / d];
+        const stepLen = (T.safe_radius - d) / s.evictLeft;
+        s.pos[0] += dx * stepLen;
+        s.pos[2] += dz * stepLen;
+        s.evictLeft--;
+        this.hoverY(s, R.shade_hover);
+        continue;
+      }
+      if (s.state === 'spawning') continue;
+      if (s.state === 'stunned') {
+        if (s.pushLeft > 0) {
+          const st = T.pulse_push_m / R.push_ticks;
+          const moved = this.moveXZ(s.pos, s.pos[0] + s.dir[0] * st, s.pos[2] + s.dir[1] * st, foot, false);
+          s.pushLeft = moved ? s.pushLeft - 1 : 0;
+        }
+      } else if (s.state === 'recoil') {
+        const st = R.recoil_m / R.recoil_ticks;
+        this.moveXZ(s.pos, s.pos[0] + s.dir[0] * st, s.pos[2] + s.dir[1] * st, foot, false);
+        if (--s.st <= 0) {
+          s.state = 'wander';
+          s.wp = null;
+        }
+      } else {
+        const d = distXZ(s.pos, P.pos);
+        if (playerAway) s.state = 'wander';
+        else if (s.state === 'wander' && d <= R.shade_detect + EPS) s.state = 'chase';
+        else if (s.state === 'chase' && d > R.shade_giveup) s.state = 'wander';
+        if (s.state === 'chase') {
+          if (d > 1e-9) {
+            const m = Math.min(speed, d);
+            this.moveXZ(s.pos, s.pos[0] + ((P.pos[0] - s.pos[0]) / d) * m, s.pos[2] + ((P.pos[2] - s.pos[2]) / d) * m, foot, false);
+          }
+        } else {
+          if (!s.wp || distXZ(s.pos, s.wp) < 0.5) s.wp = this.randomWaypoint(s.pos, 8);
+          const d2 = distXZ(s.pos, s.wp);
+          const m = Math.min(R.shade_wander_speed * DT, d2);
+          const moved = this.moveXZ(s.pos, s.pos[0] + ((s.wp[0] - s.pos[0]) / d2) * m, s.pos[2] + ((s.wp[2] - s.pos[2]) / d2) * m, foot, false);
+          if (!moved) s.wp = null;
         }
       }
+      // lit lanterns block shades at the 6 m edge
       for (const l of this.lanterns) {
         if (!l.lit) continue;
         const dx = s.pos[0] - l.pos[0];
         const dz = s.pos[2] - l.pos[2];
         const d = Math.hypot(dx, dz);
-        const keep = T.safe_radius + 0.01;
-        if (d < keep) {
+        if (d < T.safe_radius) {
           const ux = d < 1e-9 ? 1 : dx / d;
           const uz = d < 1e-9 ? 0 : dz / d;
-          s.pos[0] = l.pos[0] + ux * keep;
-          s.pos[2] = l.pos[2] + uz * keep;
+          s.pos[0] = l.pos[0] + ux * T.safe_radius;
+          s.pos[2] = l.pos[2] + uz * T.safe_radius;
         }
       }
-      clampIsland(s.pos);
+      this.hoverY(s, R.shade_hover);
     }
+  }
 
-    // 7. hit
-    if (P.invuln === 0) {
-      const hitter = this.shades.find((s) => s.stun === 0 && distXZ(s.pos, P.pos) <= T.shade_hit_radius);
-      if (hitter) {
-        P.flames = Math.max(0, P.flames - 1);
-        const dropped = Math.floor(P.carried * T.hit_drop_ratio);
-        P.carried -= dropped;
-        P.invuln = secToTicks(T.invuln_s);
-        this.stats.hits++;
-        emit('player_hit', { by: 'shade', flames: P.flames, dropped });
+  moveDrifters() {
+    const P = this.player;
+    for (const d of this.drifters) {
+      if (d.state === 'removed') continue;
+      const dist = distXZ(d.pos, P.pos);
+      if (d.state === 'idle' || d.state === 'chase') {
+        const want = !d.stoleOnce && P.respawn === 0 && P.carried >= R.drifter_chase_carried && dist <= R.drifter_chase_range + EPS;
+        d.state = want ? 'chase' : 'idle';
+      }
+      if (d.state === 'chase') {
+        if (dist > 1e-9) {
+          const m = Math.min(R.drifter_speed * DT, dist);
+          d.pos[0] += ((P.pos[0] - d.pos[0]) / dist) * m;
+          d.pos[2] += ((P.pos[2] - d.pos[2]) / dist) * m;
+        }
+      } else if (d.state === 'flee') {
+        const [ux, uz] = this.awayFromPlayer(d.pos);
+        d.pos[0] += ux * R.drifter_speed * DT;
+        d.pos[2] += uz * R.drifter_speed * DT;
+        if (this.simTick >= d.removeAt) {
+          d.state = 'removed';
+          d.stolen = 0;
+        }
+      } else {
+        if (!d.wp || distXZ(d.pos, d.wp) < 0.5) d.wp = this.randomWaypoint(d.pos, 10);
+        const d2 = distXZ(d.pos, d.wp);
+        const m = Math.min(R.drifter_idle_speed * DT, d2);
+        if (d2 > 1e-9) {
+          d.pos[0] += ((d.wp[0] - d.pos[0]) / d2) * m;
+          d.pos[2] += ((d.wp[2] - d.pos[2]) / d2) * m;
+        }
+      }
+      const g = this.ground(d.pos[0], d.pos[2]);
+      d.pos[1] = (g ?? 0) + R.drifter_hover;
+    }
+  }
+
+  randomWaypoint(from, radius) {
+    for (let i = 0; i < 8; i++) {
+      const a = this.rng() * Math.PI * 2;
+      const r = this.rng() * radius;
+      const x = from[0] + Math.cos(a) * r;
+      const z = from[2] + Math.sin(a) * r;
+      if (this.ground(x, z) !== null) return [x, 0, z];
+    }
+    return [from[0], 0, from[2]];
+  }
+
+  spawn(emit) {
+    const t = this.simTick;
+    const map = this.map;
+    if (this.randomMotes && t % R.mote_spawn_every === 0 && this.motes.length < R.mote_cap) {
+      const used = new Set(this.motes.filter((m) => m.point >= 0).map((m) => m.point));
+      const free = map.moteSpawns.map((_, i) => i).filter((i) => !used.has(i));
+      if (free.length) {
+        const i = free[Math.floor(this.rng() * free.length)];
+        this.addMote([...map.moteSpawns[i]], 'random', null, undefined, i);
       }
     }
-
-    // 8. spawning
-    if (this.randomMotes) {
-      if (++this.moteTimer >= secToTicks(WORLD.mote_respawn_s)) {
-        this.moteTimer = 0;
-        if (this.motes.length < WORLD.max_motes) this.addMote(this.randomMotePos());
+    if (this.randomShades && t >= R.shade_first_spawn) {
+      let n = 0;
+      if (t === R.shade_first_spawn) n = 2;
+      else if ((t - R.shade_first_spawn) % map.shadeInterval === 0) n = 1;
+      for (let k = 0; k < n && this.shades.length < map.shadeMax; k++) {
+        const valid = map.shadeSpawns.filter(
+          (p) => distXZ(p, this.player.pos) >= R.shade_spawn_min_dist && !this.inSafeZone(p[0], p[2]) && !this.shades.some((s) => distXZ(s.pos, p) < 0.5),
+        );
+        if (!valid.length) break;
+        const p = valid[Math.floor(this.rng() * valid.length)];
+        const s = this.addShade([p[0], p[1] + R.shade_hover, p[2]]);
+        emit('shade_spawned', { id: s.id });
       }
     }
-    if (this.randomShades) {
-      if (++this.shadeTimer >= secToTicks(WORLD.shade_spawn_s)) {
-        this.shadeTimer = 0;
-        if (this.shades.length < WORLD.max_shades) emit('shade_spawned', { id: this.addShade(this.randomShadePos()) });
+    if (this.randomDrifters && t % R.drifter_spawn_every === 0) {
+      const aliveN = this.drifters.filter((d) => d.state !== 'removed').length;
+      if (aliveN < R.drifter_max) {
+        const p = map.shadeSpawns[Math.floor(this.rng() * map.shadeSpawns.length)];
+        this.addDrifter([p[0], p[1] + R.drifter_hover, p[2]]);
       }
     }
-
-    // 9. end checks
-    if (this.litCount === this.lanterns.length) this.finish('won', 'all_lit', emit);
-    else if (P.flames <= 0) this.finish('lost', 'no_flames', emit);
-    else if (this.steps >= this.startTicks) this.finish('lost', 'dawn', emit);
-    return ev;
+    if (this.wind.active && --this.wind.left <= 0) this.wind.active = false;
+    if (this.windEnabled && t % R.wind_every === 0) {
+      this.wind = { active: true, dir: Math.floor(this.rng() * 360), left: R.wind_ticks };
+    }
   }
 
   finish(result, reason, emit) {
     this.state = result;
     this.result = reason;
-    if (result === 'won') {
-      this.score += Math.floor(this.timeLeftS) * T.score.per_second_left + this.player.flames * T.score.per_flame_left;
-    }
+    if (result === 'won') this.score += Math.floor(this.timeLeftS) * T.score.per_second_left + this.player.flames * T.score.per_flame_left;
     emit('game_over', { result, reason });
   }
 
   snapshot() {
+    const P = this.player;
     return {
       type: 'snapshot',
-      tick: this.steps,
-      sim_tick: this.steps,
-      state: this.state,
+      tick: this.tick,
+      sim_tick: this.simTick,
+      night: this.night,
+      state: this.paused && this.state === 'playing' ? 'paused' : this.state,
       time_left_s: r3(this.timeLeftS),
       score: this.score,
-      player: { pos: this.player.pos.map(r3), flames: this.player.flames, carried: this.player.carried },
+      wind: { active: this.wind.active, dir_deg: this.wind.active ? this.wind.dir : null },
+      player: {
+        pos: P.pos.map(r3), vel: P.vel.map(r3), grounded: P.grounded, flames: P.flames, carried: P.carried,
+        invuln: P.invuln > 0, dash_cd_s: r3(P.dashCd / 60), pulse_cd_s: r3(P.pulseCd / 60), charm_s: r3(P.charm / 60),
+      },
       lanterns: this.lanterns.map((l) => ({ id: l.id, pos: l.pos.map(r3), lit: l.lit, deposited: l.deposited })),
-      shades: this.shades.map((s) => ({ id: s.id, pos: s.pos.map(r3), state: s.stun > 0 ? 'stunned' : 'chase' })),
+      shades: this.shades.map((s) => ({ id: s.id, pos: s.pos.map(r3), state: s.state })),
       motes_active: this.motes.length,
-      motes: this.motes.map((m) => ({ id: m.id, pos: m.pos.map(r3) })),
+      motes: this.motes.map((m) => ({ id: m.id, pos: m.pos.map(r3), kind: m.kind, ttl_s: m.kind === 'dropped' ? r3(m.ttl / 60) : null })),
+      drifters: this.drifters.map((d) => ({ id: d.id, pos: d.pos.map(r3), state: d.state, stolen: d.stolen })),
+      charms: this.charms.map((c) => ({ id: c.id, available: c.available, respawn_s: r3(c.respawn / 60) })),
     };
-  }
-}
-
-function clampIsland(pos) {
-  const d = Math.hypot(pos[0], pos[2]);
-  if (d > WORLD.island_radius) {
-    pos[0] *= WORLD.island_radius / d;
-    pos[2] *= WORLD.island_radius / d;
   }
 }
