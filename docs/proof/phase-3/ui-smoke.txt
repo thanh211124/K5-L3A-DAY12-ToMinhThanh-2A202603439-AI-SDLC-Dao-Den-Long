@@ -1,0 +1,14 @@
+PASS  Main menu shown first  
+PASS  Night intro shows island name + Ông Đăng  
+PASS  Playing: simulation advances  sim_tick=128
+PASS  P pauses and logic is frozen  tick 128 -> 128
+PASS  Pause menu has Tiếp tục / Chơi lại Đêm / Cài đặt / Về menu  
+PASS  Esc resumes  tick 189
+PASS  Settings (volume, mouse sensitivity) persist across reload  {"volume":0.33,"sens":1.7,"cb":false} ui=33/17
+PASS  Losing shows result with "Chơi lại Đêm"  Thua rồi |  | Ngọn Lửa của Mây đã tắt… |  | Điểm Đêm: 0 · Đèn 0/6 · Lửa 0 | Tổng điểm: 0 |  | Chơi lại Đêm 2 | Về menu
+PASS  Retry restarts the same night  
+PASS  All required lanterns lit does not end the night (no early win)  
+PASS  Surviving dawn on night 3 shows Bình Minh with total score  Bình Minh |  | Ba hòn đảo đã sáng trở lại. Ông Đăng mỉm cười: “Giỏi lắm, người giữ đèn.” |  | Tổng điểm: 890 | Về menu
+PASS  Colour-blind palette setting persists and sets danger colour #FFFFFF  {"saved":true,"cls":true,"danger":"#FFFFFF"}
+
+12/12 UI checks passed

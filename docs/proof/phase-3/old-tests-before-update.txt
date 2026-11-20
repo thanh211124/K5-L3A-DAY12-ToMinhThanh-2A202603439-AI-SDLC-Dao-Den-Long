@@ -1,0 +1,14 @@
+# npm test right after implementing Ticket-03 rules, BEFORE updating old tests (2026-11-20T09:07:44Z)
+# These are exactly the tests the change request invalidates (see docs/notes/phase-3.md §3).
+not ok 1 - game.contract.json has required fields and tuning == src/core/tuning.js
+not ok 18 - AC06_deposit_and_light: Nạp 10 trong bán kính 2 m → deposit + lantern_lit; điểm = 10×10 + 100
+not ok 20 - AC08_win_all_lit: Thắp đèn cuối → won/all_lit; điểm = 100 + 100 + floor(giây còn)×2 + 50×lửa
+not ok 30 - AC18_default_level_night1: Đêm 1 chuẩn: 5 đèn đúng tọa độ, 20 đom đóm, Bóng Mực: 2 con tick 300 (spawning), +1 mỗi 480 tick
+not ok 48 - P2_17_pause: Tạm dừng: tick tăng, sim_tick/thời gian/di chuyển đứng yên, state "paused"; paused/resumed
+not ok 54 - P2_23_nights_2_3_setup: Đêm 2: 6 đèn, 330 s; Đêm 3: 7 đèn, 360 s, đèn đúng tọa độ chuẩn
+not ok 55 - P2_24_night2_setup: Đêm 2: 6 đèn L1–L6 theo thứ tự chuẩn, 330 s, Bùa C1 tại cầu
+not ok 56 - P2_25_win_on_dawn_tick: Còn sống và đủ đèn ở đúng tick hết giờ → thắng (không phải dawn)
+not ok 64 - time_left_s = duration - steps/60
+# tests 64
+# pass 55
+# fail 9
