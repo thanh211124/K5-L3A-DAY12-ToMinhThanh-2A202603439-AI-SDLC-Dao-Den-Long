@@ -1,0 +1,24 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+      - name: Contract smoke run (headless_cmd from game.contract.json)
+        run: |
+          CMD=$(node -p "require('./game.contract.json').headless_cmd")
+          $CMD --seed 7 --night 1 --ticks 600 --out /tmp/a.jsonl
+          $CMD --seed 7 --night 1 --ticks 600 --out /tmp/b.jsonl
+          cmp /tmp/a.jsonl /tmp/b.jsonl
+          tail -1 /tmp/a.jsonl
+      - name: Evidence reproduces
+        run: npm run proof

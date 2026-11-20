@@ -1,0 +1,18 @@
+{
+  "random_motes": false,
+  "random_shades": false,
+  "motes": [
+    [
+      0,
+      0,
+      0
+    ]
+  ],
+  "shades": [],
+  "lanterns": [
+    {
+      "id": "L1",
+      "lit": true
+    }
+  ]
+}

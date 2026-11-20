@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm test --silent > /dev/null 2>&1 || { echo 'npm test is RED - fix the failing tests before finishing (see AGENTS.md).' >&2; exit 2; }",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}
