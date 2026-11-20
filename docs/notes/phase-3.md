@@ -30,7 +30,7 @@ Tô Minh Thành · 2A202603439 · tag `phase-3`
 | §1 Châm dầu | Dầu 55, mang 10 → used 5, fuel 100, +25, sự kiện `refuel`, không có `deposit` | P3_02 | Đạt |
 | §1 Thắp lại cần 5 | `lantern_lit` relight true, +25 +40 = 65, relit_count 1, fuel 100 | P3_03 | Đạt |
 | §1 Thắp lần đầu vẫn cần 10 | Nạp 3 → chưa sáng | AC07 | Đạt |
-| §1 Hiển thị thanh dầu, nhấp nháy < 30 | Thanh cam trên đèn sáng; đèn yếu nhấp nháy, mất vòng an toàn | [04](../proof/phase-3/screens/04_fuel_bar_full.png), [01](../proof/phase-3/screens/01_fuel_bars.png) | Đạt (ảnh tĩnh; nhịp 1 Hz chỉ đọc được từ code) |
+| §1 Hiển thị thanh dầu, nhấp nháy < 30 | Thanh cam trên đèn sáng; đèn yếu nhấp nháy, mất vòng an toàn | [04](../proof/phase-3/screens/04_fuel_bar_full.png), [07](../proof/phase-3/screens/07_lowfuel_blink_a.png) / [08](../proof/phase-3/screens/08_lowfuel_blink_b.png) (cách 0,5 s) | Đạt |
 | §2 Đèn < 30 mất vùng an toàn | Đứng ở đèn có dầu 25 vẫn bị đánh (đèn có dầu 100 thì không, AC14) | P3_09, AC14 | Đạt |
 | §2 Wander → đèn yếu → drain | Bóng Mực đi về đèn yếu L1 (bỏ qua L2 đang đầy), tới ≤ 2 m thì drain | P3_16 | Đạt |
 | §2 Hút 5/s + hao 1/s, `fuel_drain` mỗi 60 tick, hết dầu thì về wander | `fuel_drain` đầu tiên ở tick 61 với fuel 23.0; `lantern_out` ở tick 291 (= 1739/6); wander lúc tick 300 | P3_05 | Đạt |
@@ -45,7 +45,7 @@ Tô Minh Thành · 2A202603439 · tag `phase-3`
 | §3 Thời lượng 240/270/300 | Snapshot tick 0 | AC18, P2_23, P2_24 | Đạt |
 | §4 Sức chứa tăng | 7 lần thắp → sức chứa 20 (tối đa), mang 20; một lần thắp → 12 | P3_04, P3_03, AC06 | Đạt |
 | §5 Điểm mới | +5/đom đóm, +100 thắp lần đầu, +40 thắp lại, +5/+15 Tỏa Sáng, thưởng bình minh | AC06, P3_02, P3_03, P3_08, P3_11 | Đạt |
-| §6 Chế độ mù màu | Cài đặt được lưu; `--danger` = #FFFFFF; viền + mắt #00B3FF; ⚠ trên đồng hồ | ui-smoke, palette.test | Đạt (màu Bóng Mực chỉ kiểm qua code, chưa có ảnh có Bóng Mực) |
+| §6 Chế độ mù màu | Cài đặt được lưu; `--danger` = #FFFFFF; viền + mắt #00B3FF; ⚠ trên đồng hồ | ui-smoke, palette.test, ảnh [05](../proof/phase-3/screens/05_shades_normal.png) / [06](../proof/phase-3/screens/06_shades_colourblind.png), người chơi bật thử | Đạt |
 | §7 Contract v1.2 | Version 1.2, đủ 8 khóa tuning mới; snapshot có `fuel` / `ever_lit` / `relit_count` / `capacity`; trạng thái `drain` hợp lệ | contract.test, catalog | Đạt |
 | Không hồi quy | Mọi scenario Phase 1–2 không bị thay thế vẫn xanh; tất định 3 Đêm, ≤ 30 s (0.19–0.40 s) | RESULTS.md | Đạt |
 
@@ -71,11 +71,17 @@ Ngay sau khi cài luật mới, **9 test đỏ** ([old-tests-before-update.txt](
 
 - **Đạt:** 78/78 test, 61/61 proof, 12/12 bước UI; FPS khoảng 140 (Đêm 1 và 3, 1280×720, máy của tôi).
 - **Kiểm tra lỗi (mutation check):** tôi cố tình đổi 5 số (drain 5→4, relight 5→6, ngưỡng 30→20, điểm drain 15→10, tỉ lệ thắng 0.6→0.5). Lần nào cũng có ít nhất một scenario P3 đỏ.
-- **Chưa đạt / hạn chế:**
-  - Ảnh có Bóng Mực ở chế độ mù màu chưa có.
-  - Nhịp nhấp nháy 1 Hz chưa đo bằng video.
-  - Chưa chơi tay một Đêm trọn vẹn với luật dầu mới (cân bằng game chưa được người chơi kiểm tra).
-  - Âm thanh vẫn chưa nghe thử.
+- **Đã bổ sung sau khi chơi thử:**
+  - Ảnh Bóng Mực thường và ở chế độ mù màu: [05](../proof/phase-3/screens/05_shades_normal.png) viền và mắt tím #7A3CFF, [06](../proof/phase-3/screens/06_shades_colourblind.png) xanh #00B3FF. Bóng Mực vẫn hiện vì ticket chỉ đổi màu viền và mắt.
+  - Đèn sắp cạn dầu nhấp nháy: [07](../proof/phase-3/screens/07_lowfuel_blink_a.png) / [08](../proof/phase-3/screens/08_lowfuel_blink_b.png), chụp cách nhau 0,5 s = nửa chu kỳ 1 Hz (sáng + thanh dầu đỏ → tối, mất thanh). Bối cảnh được dựng bằng `tools/shot.js` (đặt trạng thái qua `__game`, chỉ để chụp ảnh).
+- **Playtest của người (Tô Minh Thành, chơi tay trên trình duyệt):**
+  - Âm thanh có và nghe được: **đạt** (kiểm tra bằng tai).
+  - Chế độ mù màu bật được; Bóng Mực vẫn hiện (đúng yêu cầu).
+  - Mây nhấp nháy khi bị Bóng Mực chạm. Đây là hiệu ứng bất tử của Mây (Phase 2), khác với nhấp nháy của đèn sắp cạn dầu (kiểm tra bằng ảnh 07/08).
+  - **Độ khó:** "chơi một ván thì hơi khó". Số liệu (dầu hao 1/s, Bóng Mực hút 5/s, Đêm 240 s, cần 3/5) là số chuẩn của ticket nên **không được chỉnh**. Có thể giảm khó bằng phần hiển thị (không đổi luật) ở Phase 4, ví dụ gợi ý trên HUD đèn nào sắp tắt.
+- **Còn hạn chế:**
+  - Nhịp 1 Hz kiểm tra bằng hai ảnh, chưa có video.
+  - Chưa chơi thắng trọn cả 3 Đêm bằng tay.
 - **Rủi ro với test ẩn:** C4 (tốc độ và điểm dừng của wander), C5 (drain bắt đầu trừ từ tick sau), C6 (cách đếm `fuel_drain`).
 
 ## 5. Lỗi của AI (Phase 3)
