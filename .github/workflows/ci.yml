@@ -22,3 +22,7 @@ jobs:
           tail -1 /tmp/a.jsonl
       - name: Evidence reproduces
         run: npm run proof
+      - name: Soak (Ticket-04)
+        run: node --expose-gc --jitless --no-expose-wasm tools/soak.js --seed 7 --nights 10 --out /tmp/soak.json && node -e "const s=require('/tmp/soak.json');console.log(s);process.exit(s.pass?0:1)"
+      - name: Release build
+        run: npm run build
