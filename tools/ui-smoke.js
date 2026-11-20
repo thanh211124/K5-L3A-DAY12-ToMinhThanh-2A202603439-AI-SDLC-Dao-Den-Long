@@ -91,10 +91,24 @@ try {
   // win night 3 → Bình Minh with total score
   await send('Page.navigate', { url: `${BASE}?night=3&autostart` });
   await sleep(1500);
-  await ev('(__game.sim.lanterns.forEach((l)=>{l.lit=true;l.deposited=10}), true)');
-  await sleep(1500);
+  // Ticket-03: no early win — lighting everything must NOT end the night; forcing dawn with 5/7 lit must win
+  await ev('(__game.sim.lanterns.slice(0,5).forEach((l)=>{l.lit=true;l.everLit=true;l.deposited=10;l.fuel=6000}), true)');
+  await sleep(1000);
+  check('All required lanterns lit does not end the night (no early win)', (await st()).phase === 'playing');
+  await ev('(__game.sim.endTick = __game.sim.simTick + 30, true)');
+  await sleep(1800);
   const dawn = await ev("document.getElementById('card').innerText");
-  check('Winning night 3 shows Bình Minh with total score', dawn.includes('Bình Minh') && dawn.includes('Tổng điểm'), dawn.replace(/\n/g, ' | '));
+  check('Surviving dawn on night 3 shows Bình Minh with total score', dawn.includes('Bình Minh') && dawn.includes('Tổng điểm'), dawn.replace(/\n/g, ' | '));
+
+  // Ticket-03 colour-blind setting: persisted, flips the UI danger colour to #FFFFFF
+  await send('Page.navigate', { url: BASE });
+  await sleep(2000);
+  await click('bSet');
+  await ev("(()=>{const c=document.getElementById('cb');c.checked=true;c.dispatchEvent(new Event('change'));return true})()");
+  await send('Page.reload');
+  await sleep(2000);
+  const cb = await ev("JSON.stringify({saved: JSON.parse(localStorage.getItem('ddl-settings')).cb, cls: document.body.classList.contains('cb'), danger: getComputedStyle(document.body).getPropertyValue('--danger').trim()})");
+  check('Colour-blind palette setting persists and sets danger colour #FFFFFF', cb === JSON.stringify({ saved: true, cls: true, danger: '#FFFFFF' }), cb);
   ws.close();
 } finally {
   chrome.kill();

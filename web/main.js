@@ -16,10 +16,12 @@ const C = {
   lampOn: '#FFB347', lampCore: '#FFE9B0', lampOff: '#5B5F6E', moteCore: '#FFF6C2', moteGlow: '#FFE58A',
   shadeBody: '#120A1A', shadeRim: '#7A3CFF', shadeStun: '#3A3450', cloth: '#E8E2D0', scarf: '#C8102E',
   gold: '#F2C14E', drifter: '#8FA3B8', danger: '#FF5A5F', ui: '#F5F1E6',
+  // Ticket-03 colour-blind mode
+  cbRim: '#00B3FF', cbDanger: '#FFFFFF',
 };
 
 // ---------- settings (persisted) ----------
-const settings = { volume: 0.7, sens: 1 };
+const settings = { volume: 0.7, sens: 1, cb: false };
 try {
   Object.assign(settings, JSON.parse(localStorage.getItem('ddl-settings') || '{}'));
 } catch { /* storage unavailable */ }
@@ -29,6 +31,8 @@ const saveSettings = () => {
   } catch { /* ignore */ }
 };
 const audio = new Audio(settings.volume);
+const applyCb = () => document.body.classList.toggle('cb', !!settings.cb);
+applyCb();
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -142,9 +146,23 @@ function makeLantern(l) {
   const ring = new THREE.Mesh(new THREE.RingGeometry(T.safe_radius - 0.15, T.safe_radius, 48), new THREE.MeshBasicMaterial({ color: C.lampOn, transparent: true, opacity: 0, side: THREE.DoubleSide }));
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.04;
-  g.add(post, body, core, cap, light, ring);
+  // Ticket-03: fuel bar above lit lanterns; torn paper patch on unlit (shape cue, not only colour)
+  // bar group faces the camera; fill sits in front of its background (local +z), anchored at the left edge
+  const barG = new THREE.Group();
+  barG.position.y = 5.4;
+  const barBg = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.32), new THREE.MeshBasicMaterial({ color: '#1a1f3d' }));
+  const barMat = new THREE.MeshBasicMaterial({ color: C.lampOn });
+  const barGeo = new THREE.PlaneGeometry(2.0, 0.2);
+  barGeo.translate(1.0, 0, 0);
+  const bar = new THREE.Mesh(barGeo, barMat);
+  bar.position.set(-1.0, 0, 0.02);
+  barG.add(barBg, bar);
+  const tear = new THREE.Mesh(new THREE.CircleGeometry(0.28, 5), new THREE.MeshBasicMaterial({ color: '#15182a', side: THREE.DoubleSide }));
+  tear.position.set(0.25, 3.55, 0.73);
+  tear.rotation.z = 0.7;
+  g.add(post, body, core, cap, light, ring, barG, tear);
   g.position.set(...l.pos);
-  g.userData = { bodyMat, core, light, ring };
+  g.userData = { bodyMat, body, core, light, ring, bar, barG, barMat, tear };
   return g;
 }
 function makePlayer() {
@@ -178,13 +196,13 @@ function makeShade() {
   const rim = new THREE.Mesh(G.shade, rimMat);
   rim.scale.setScalar(1.08);
   body.scale.y = rim.scale.y = 1.15;
-  const eyeMat = new THREE.MeshBasicMaterial({ color: '#d9b8ff' });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: C.shadeRim });
   const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 4), eyeMat);
   const e2 = e1.clone();
   e1.position.set(-0.25, 0.2, 0.72);
   e2.position.set(0.25, 0.2, 0.72);
   g.add(rim, body, e1, e2);
-  g.userData = { bodyMat, rimMat };
+  g.userData = { bodyMat, rimMat, eyeMat };
   return g;
 }
 function makeDrifter() {
@@ -229,13 +247,13 @@ function startNight(n, autostart = false) {
   camYaw = 0;
   lastCountdown = 99;
   windWarned = false;
-  $('moteBar').innerHTML = '<i></i>'.repeat(T.carry_capacity);
+  $('moteBar').innerHTML = '';
   if (autostart) return play();
   phase = 'intro';
   $('hud').classList.add('hidden');
   showCard(`<h2>Đêm ${n} / 3</h2><h1>${map.name}</h1>
     <p class="quote">“${OSTORIES[n]}”<br/>— Ông Đăng, người giữ đèn già</p>
-    <p>Thắp <b>${sim.lanterns.length}</b> đèn trong <b>${map.duration_s} giây</b>. Mỗi đèn cần ${T.lantern_cost} đom đóm.</p>
+    <p>Giữ ít nhất <b>${sim.winThreshold}/${sim.lanterns.length}</b> đèn sáng tới bình minh (<b>${map.duration_s} giây</b>). Thắp đèn cần ${T.lantern_cost} đom đóm (thắp lại ${T.relight_cost}); đèn cạn dầu dần, nhấn E ở đèn đang sáng để châm dầu. Bóng Mực hút dầu đèn yếu!</p>
     <button id="bGo">Bắt đầu Đêm ${n} (Enter)</button>`);
   $('bGo').onclick = play;
 }
@@ -291,7 +309,13 @@ function settingsScreen(back) {
   showCard(`<h1>Cài đặt</h1>
     <label>Âm lượng: <b id="vVal">${Math.round(settings.volume * 100)}</b>%</label><input id="vol" type="range" min="0" max="100" value="${Math.round(settings.volume * 100)}">
     <label>Độ nhạy chuột: <b id="sVal">${settings.sens.toFixed(1)}</b></label><input id="sens" type="range" min="2" max="30" value="${Math.round(settings.sens * 10)}">
+    <label><input id="cb" type="checkbox" ${settings.cb ? 'checked' : ''}> Bảng màu dễ phân biệt (mù màu)</label>
     <button id="bBack">Quay lại</button>`);
+  $('cb').onchange = (e) => {
+    settings.cb = e.target.checked;
+    applyCb();
+    saveSettings();
+  };
   $('vol').oninput = (e) => {
     settings.volume = e.target.value / 100;
     $('vVal').textContent = e.target.value;
@@ -309,7 +333,7 @@ function result(won, reason) {
   phase = 'result';
   audio.music(false);
   if (won) totalScore += sim.score; // total = sum of the nights won
-  const why = { all_lit: 'Mọi ngọn đèn đã sáng!', dawn: 'Bình minh tới khi đảo còn tối…', no_flames: 'Ngọn Lửa của Mây đã tắt…' }[reason];
+  const why = { dawn_survived: `Bình minh lên, ${sim.litCount} ngọn đèn vẫn sáng!`, dawn: `Bình minh tới mà chỉ ${sim.litCount}/${sim.lanterns.length} đèn sáng (cần ${sim.winThreshold})…`, no_flames: 'Ngọn Lửa của Mây đã tắt…' }[reason];
   if (won && night === 3) {
     phase = 'dawn';
     $('hud').classList.add('hidden');
@@ -431,8 +455,10 @@ function sync(now) {
     o.position.set(s.pos[0], s.pos[1] + Math.sin(now * 3 + s.pos[2]) * 0.1, s.pos[2]);
     o.lookAt(P.pos[0], o.position.y, P.pos[2]);
     const stunned = s.state === 'stunned';
+    const rimC = settings.cb ? C.cbRim : C.shadeRim; // Ticket-03 colour-blind: rim + eyes #00B3FF
     o.userData.bodyMat.color.set(stunned ? C.shadeStun : C.shadeBody);
-    o.userData.rimMat.color.set(stunned ? C.shadeStun : C.shadeRim);
+    o.userData.rimMat.color.set(stunned ? C.shadeStun : rimC);
+    o.userData.eyeMat.color.set(rimC);
     o.scale.setScalar(s.state === 'spawning' ? Math.max(0.2, 1 - s.st / R.shade_spawning_ticks) : 1);
     o.rotation.z = stunned ? Math.sin(now * 10) * 0.3 : 0;
   });
@@ -451,15 +477,26 @@ function sync(now) {
     o.position.set(c.pos[0], c.pos[1] + 1 + Math.sin(now * 2) * 0.15, c.pos[2]);
     o.rotation.y = now * 1.6;
   });
+  const blinkOff = Math.floor(now * 2) % 2 === 1; // 1 Hz slow blink
   sim.lanterns.forEach((l, i) => {
-    const o = ents.lanterns[i];
-    const fill = l.lit ? 1 : l.deposited / T.lantern_cost;
-    o.userData.bodyMat.color.set(l.lit ? C.lampOn : C.lampOff);
-    o.userData.bodyMat.emissive.set(l.lit ? C.lampOn : fill > 0 ? '#8a5a2a' : C.lampOff);
-    o.userData.bodyMat.emissiveIntensity = l.lit ? 1 : 0.2 + fill * 0.6;
-    o.userData.core.visible = l.lit;
-    o.userData.light.intensity = l.lit ? 60 : fill * 8;
-    o.userData.ring.material.opacity = l.lit ? 0.35 : 0;
+    const u = ents.lanterns[i].userData;
+    const fuel = l.fuel / R.fuel_unit;
+    const low = l.lit && fuel < T.low_fuel_threshold;
+    const dim = low && blinkOff;
+    const fill = l.lit ? 1 : l.deposited / sim.costOf(l);
+    u.bodyMat.color.set(l.lit ? C.lampOn : C.lampOff);
+    u.bodyMat.emissive.set(l.lit ? C.lampOn : fill > 0 ? '#8a5a2a' : C.lampOff);
+    u.bodyMat.emissiveIntensity = l.lit ? (dim ? 0.25 : 1) : 0.2 + fill * 0.6;
+    u.core.visible = l.lit && !dim;
+    u.light.intensity = l.lit ? (dim ? 12 : 60) : fill * 8;
+    u.ring.material.opacity = sim.hasZone(l) ? 0.35 : 0; // ring only while the lantern still protects
+    u.body.scale.set(1, l.lit ? 1.3 : 1.3 * 0.8, 1); // unlit: squashed 20%
+    u.body.position.y = l.lit ? 3.6 : 3.45;
+    u.tear.visible = !l.lit;
+    u.barG.visible = l.lit && !dim;
+    u.bar.scale.x = Math.max(0.001, fuel / T.fuel_max);
+    u.barMat.color.set(low ? (settings.cb ? C.cbDanger : C.danger) : C.lampOn);
+    u.barG.lookAt(camera.position);
   });
   // ambient light grows with progress: 0.15 + 0.55 × lit/total (Ticket-02)
   ambient.intensity = 0.15 + 0.55 * (sim.litCount / sim.lanterns.length);
@@ -512,13 +549,16 @@ function updateHud() {
   const P = sim.player;
   $('flames').innerHTML = Array.from({ length: Math.max(T.flames, P.flames) }, (_, i) => `<span class="${i < P.flames ? 'on' : 'off'}">●</span>`).join('');
   const tl = Math.ceil(sim.timeLeftS);
-  $('timer').textContent = fmt(tl);
+  $('timer').textContent = (tl <= 30 && settings.cb ? '⚠ ' : '') + fmt(tl);
   $('timer').className = tl <= 30 ? 'danger' : '';
   if (phase === 'playing' && tl <= 10 && tl < lastCountdown && tl > 0) audio.sfx('tick'); // last-10-s countdown
   lastCountdown = tl;
-  $('lit').textContent = `${sim.litCount}/${sim.lanterns.length}`;
+  $('lit').textContent = `${sim.litCount}/${sim.lanterns.length} (cần ${sim.winThreshold})`;
   $('score').textContent = totalScore + sim.score;
+  const cap = sim.capacity;
+  if ($('moteBar').children.length !== cap) $('moteBar').innerHTML = '<i></i>'.repeat(cap);
   [...$('moteBar').children].forEach((c, i) => c.classList.toggle('on', i < P.carried));
+  $('carried').textContent = `${P.carried}/${cap}`;
   const dashP = P.charm > 0 ? 0 : P.dashCd / R.dash_cd_ticks;
   $('cdDash').style.setProperty('--p', dashP);
   $('cdDash').classList.toggle('off', dashP > 0);
@@ -527,8 +567,8 @@ function updateHud() {
   $('cdPulse').classList.toggle('off', pulseP > 0 || P.carried < T.pulse_cost);
   $('charmBadge').textContent = P.charm > 0 ? `Bùa Gió ${(P.charm / 60).toFixed(1)}s` : '';
 
-  const near = sim.lanterns.filter((l) => !l.lit && Math.hypot(l.pos[0] - P.pos[0], l.pos[2] - P.pos[2]) <= T.interact_radius)[0];
-  $('prompt').textContent = near && phase === 'playing' ? `E — Nạp ánh sáng (${near.deposited}/${T.lantern_cost})` : '';
+  const near = sim.nearestLantern(P.pos, (l) => (!l.lit || l.fuel < T.fuel_max * R.fuel_unit) && Math.hypot(l.pos[0] - P.pos[0], l.pos[2] - P.pos[2]) <= T.interact_radius);
+  $('prompt').textContent = !near || phase !== 'playing' ? '' : near.lit ? `E — Châm dầu (${Math.floor(near.fuel / R.fuel_unit)}/${T.fuel_max})` : `E — Nạp ánh sáng (${near.deposited}/${sim.costOf(near)})`;
 
   // arrow to the nearest unlit lantern when it is off-screen
   const arrow = $('arrow');
@@ -592,7 +632,10 @@ function frame(nowMs) {
 // ?night=N&autostart → straight into a night (screenshots / FPS bench); ?lit=K pre-lights K lanterns (screenshots only)
 if (qs.has('night')) {
   startNight(Number(qs.get('night')) || 1, qs.has('autostart'));
-  if (qs.has('lit')) sim.lanterns.slice(0, Number(qs.get('lit'))).forEach((l) => ((l.lit = true), (l.deposited = T.lantern_cost)));
+  // screenshots only: ?lit=K lights K lanterns (full fuel), ?low makes the first one low on fuel, ?cb forces colour-blind mode
+  if (qs.has('lit')) sim.lanterns.slice(0, Number(qs.get('lit'))).forEach((l) => Object.assign(l, { lit: true, everLit: true, deposited: T.lantern_cost, fuel: T.fuel_max * R.fuel_unit }));
+  if (qs.has('low')) sim.lanterns[0].fuel = 20 * R.fuel_unit;
+  if (qs.has('cb')) (settings.cb = true), applyCb();
 } else menu();
 if (!qs.has('fps')) $('fps').classList.add('hidden');
 requestAnimationFrame(frame);

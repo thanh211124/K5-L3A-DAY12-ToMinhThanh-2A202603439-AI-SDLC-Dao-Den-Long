@@ -1,5 +1,5 @@
 // Regenerates phase evidence: runs every catalog scenario through the real CLI and writes
-// docs/proof/<phase>/<id>/{scenario.json,inputs.json,out.jsonl} + docs/proof/<phase>/RESULTS.md (default phase-2).
+// docs/proof/<phase>/<id>/{scenario.json,inputs.json,out.jsonl} + docs/proof/<phase>/RESULTS.md (default phase-3).
 // Never edit the outputs by hand — rerun `npm run proof` at the tag to reproduce.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { SCENARIOS } from '../tests/scenarios/catalog.js';
 
-const phase = process.argv[2] || 'phase-2';
+const phase = process.argv[2] || 'phase-3';
 const root = join('docs', 'proof', phase);
 mkdirSync(root, { recursive: true });
 // remove only generated files (keep screens/ and anything hand-made like screenshots)

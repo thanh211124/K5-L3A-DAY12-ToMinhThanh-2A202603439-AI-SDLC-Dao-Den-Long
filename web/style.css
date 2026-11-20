@@ -37,3 +37,9 @@ kbd { background: #2a2f5e; border-radius: 4px; padding: 0 5px; font-size: 11px; 
 .card button.sec { background: #2a2f5e; color: var(--ui); }
 .card label { display: block; text-align: left; margin: 12px 0 4px; }
 .card input[type=range] { width: 100%; }
+
+/* Ticket-03 */
+#carried { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 700; color: var(--gold); text-shadow: 0 0 6px #000; }
+#moteBar i { width: 14px; height: 14px; }
+/* colour-blind mode: UI danger #FF5A5F -> #FFFFFF (+ warning icon added in JS) */
+body.cb { --danger: #FFFFFF; }
