@@ -1,5 +1,5 @@
-// Regenerates Phase 1 evidence: runs every catalog scenario through the real CLI and writes
-// docs/proof/phase-1/<id>/{scenario.json,inputs.json,out.jsonl} + docs/proof/phase-1/RESULTS.md.
+// Regenerates phase evidence: runs every catalog scenario through the real CLI and writes
+// docs/proof/<phase>/<id>/{scenario.json,inputs.json,out.jsonl} + docs/proof/<phase>/RESULTS.md (default phase-2).
 // Never edit the outputs by hand — rerun `npm run proof` at the tag to reproduce.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'node:fs';
@@ -11,7 +11,7 @@ const phase = process.argv[2] || 'phase-2';
 const root = join('docs', 'proof', phase);
 mkdirSync(root, { recursive: true });
 // remove only generated files (keep screens/ and anything hand-made like screenshots)
-for (const f of readdirSync(root)) if (/^AC\d+_|^determinism_run|^RESULTS\.md$/.test(f)) rmSync(join(root, f), { recursive: true, force: true });
+for (const f of readdirSync(root)) if (/^(AC|P\d_)\d+_|^determinism|^RESULTS\.md$/.test(f)) rmSync(join(root, f), { recursive: true, force: true });
 
 const rows = [];
 let fails = 0;
@@ -36,17 +36,26 @@ for (const sc of SCENARIOS) {
   rows.push(`| ${sc.id} | ${sc.req} | \`${cmd}\` | ${JSON.stringify(L.at(-1)).replace(/\|/g, '\\|')} | ${err ? 'CHƯA ĐẠT: ' + err : 'ĐẠT'} |`);
 }
 
-// determinism evidence: run the default level twice with the same seed and hash both outputs
-const hashes = [];
-for (const n of [1, 2]) {
-  const out = join(root, `determinism_run${n}.jsonl`);
-  execFileSync(process.execPath, ['src/headless.js', '--seed', '2026', '--night', '1', '--ticks', '3600', '--out', out]);
-  hashes.push(createHash('sha256').update(readFileSync(out)).digest('hex'));
+// determinism + 21 600-tick budget evidence: every night, default level, run twice, hash outputs, time it
+const det = [];
+const immortal = join(root, 'determinism_immortal.json');
+writeFileSync(immortal, JSON.stringify({ player: { flames: 1000000 } }));
+for (const night of [1, 2, 3]) {
+  const hashes = [];
+  let ms = 0;
+  for (const n of [1, 2]) {
+    const out = join(root, `determinism_n${night}_run${n}.jsonl`);
+    const t0 = performance.now();
+    execFileSync(process.execPath, ['src/headless.js', '--seed', '2026', '--night', String(night), '--scenario', immortal, '--ticks', '21600', '--snapshot-every', '600', '--out', out]);
+    ms = Math.max(ms, performance.now() - t0);
+    hashes.push(createHash('sha256').update(readFileSync(out)).digest('hex'));
+  }
+  const ok = hashes[0] === hashes[1] && ms <= 30000;
+  if (!ok) fails++;
+  det.push(`| ${night} | \`${hashes[0].slice(0, 16)}…\` | \`${hashes[1].slice(0, 16)}…\` | ${ms.toFixed(0)} ms | ${ok ? 'ĐẠT' : 'CHƯA ĐẠT'} |`);
 }
-const detOk = hashes[0] === hashes[1];
-if (!detOk) fails++;
 
-const md = `# Bằng chứng Phase 1 (tự sinh bởi \`npm run proof\`)
+const md = `# Bằng chứng ${phase} (tự sinh bởi \`npm run proof\`)
 
 Sinh lúc: ${new Date().toISOString()} · Node ${process.version} · ${process.platform}/${process.arch}
 
@@ -56,15 +65,15 @@ Mỗi dòng: một tiêu chí nghiệm thu, chạy qua **CLI headless thật**; 
 |---|---|---|---|---|
 ${rows.join('\n')}
 
-## Tính tất định
+## Tính tất định và thời gian chạy một Đêm đầy đủ
 
-Chạy 2 lần \`--seed 2026 --night 1 --ticks 3600\` (màn mặc định, có sinh ngẫu nhiên):
+Mỗi Đêm chạy 2 lần \`--seed 2026 --ticks 21600\` (mọi thứ ngẫu nhiên bật, Mây không thể chết để chạy đủ 21 600 tick); so sha256 và đo thời gian (yêu cầu ≤ 30 s).
 
-- run1 sha256: \`${hashes[0]}\`
-- run2 sha256: \`${hashes[1]}\`
-- Kết quả: **${detOk ? 'ĐẠT (giống hệt)' : 'CHƯA ĐẠT'}**
+| Đêm | run1 sha256 | run2 sha256 | Thời gian chậm nhất | Kết quả |
+|---|---|---|---|---|
+${det.join('\n')}
 
-Tổng: ${SCENARIOS.length + 1 - fails}/${SCENARIOS.length + 1} đạt.
+Tổng: ${SCENARIOS.length + 3 - fails}/${SCENARIOS.length + 3} đạt.
 `;
 writeFileSync(join(root, 'RESULTS.md'), md);
 console.log(md);
