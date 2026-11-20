@@ -1,4 +1,4 @@
-// Single source of truth for gameplay numbers — Ticket-02 standard values (Contract v1.1).
+// Single source of truth for gameplay numbers — Ticket-02 standard values + Ticket-03 change request (Contract v1.2).
 // game.contract.json "tuning" MUST mirror TUNING exactly (enforced by tests/contract.test.js).
 
 export const TUNING = {
@@ -10,9 +10,9 @@ export const TUNING = {
   interact_radius: 2,
   pulse_cost: 3,
   pulse_radius: 5,
-  night1_duration_s: 300,
-  night2_duration_s: 330,
-  night3_duration_s: 360,
+  night1_duration_s: 240, // Ticket-03 (was 300)
+  night2_duration_s: 270, // Ticket-03 (was 330)
+  night3_duration_s: 300, // Ticket-03 (was 360)
   flames: 3,
   invuln_s: 1.5,
   hit_drop_ratio: 0.5,
@@ -26,7 +26,18 @@ export const TUNING = {
   dash_speed: 14,
   dash_duration_s: 0.2,
   dash_cooldown_s: 1.5,
-  score: { per_mote: 10, per_lantern: 100, per_stun: 5, per_second_left: 2, per_flame_left: 50 },
+  // Ticket-03: lantern fuel, drain, new win rule, growing capacity
+  fuel_max: 100,
+  fuel_decay_per_s: 1.0,
+  fuel_per_mote: 10,
+  relight_cost: 5,
+  win_ratio: 0.6,
+  drain_per_s: 5,
+  low_fuel_threshold: 30,
+  capacity_max: 20,
+  // Ticket-03 score: +5 per mote put in a lantern, +100 first light; time bonus removed (0).
+  // Relight +40, pulse on a draining shade 15 total, dawn bonus per lit lantern 50 + floor(fuel): see RULES.
+  score: { per_mote: 5, per_lantern: 100, per_stun: 5, per_second_left: 0, per_flame_left: 50 },
 };
 
 // Other standard rules from Ticket-02 (not contract keys). All durations in ticks (60/s).
@@ -79,4 +90,13 @@ export const RULES = {
   wind_ticks: 300,
   wind_speed: 2,
   pad_radius: 1,
+  // Ticket-03
+  fuel_unit: 60, // fuel stored as integer 1/60 units (1 unit/tick decay = 1.0/s)
+  capacity_per_light: 2,
+  relight_score: 40,
+  stun_drain_score: 15, // total for a shade that was draining
+  dawn_lantern_score: 50, // + floor(fuel)
+  drain_range: 2,
+  drain_chase_range: 6,
+  drain_event_every: 60,
 };
