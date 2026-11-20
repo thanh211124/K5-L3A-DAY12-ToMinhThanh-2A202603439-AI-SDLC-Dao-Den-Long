@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { SCENARIOS } from '../tests/scenarios/catalog.js';
 
-const phase = process.argv[2] || 'phase-1';
+const phase = process.argv[2] || 'phase-2';
 const root = join('docs', 'proof', phase);
 mkdirSync(root, { recursive: true });
 // remove only generated files (keep screens/ and anything hand-made like screenshots)
@@ -18,7 +18,7 @@ let fails = 0;
 for (const sc of SCENARIOS) {
   const d = join(root, sc.id);
   mkdirSync(d, { recursive: true });
-  const args = ['src/headless.js', '--seed', String(sc.seed ?? 1), '--night', '1', '--ticks', String(sc.ticks)];
+  const args = ['src/headless.js', '--seed', String(sc.seed ?? 1), '--night', String(sc.night ?? 1), '--ticks', String(sc.ticks), '--snapshot-every', String(sc.every ?? 10)];
   if (sc.scenario) {
     writeFileSync(join(d, 'scenario.json'), JSON.stringify(sc.scenario, null, 2));
     args.push('--scenario', join(d, 'scenario.json'));

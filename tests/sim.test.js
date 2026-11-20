@@ -1,7 +1,8 @@
 // Unit tests for pure logic (no process spawn).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Sim, defaultLanterns, r3 } from '../src/core/sim.js';
+import { Sim, r3 } from '../src/core/sim.js';
+import { NIGHTS } from '../src/core/maps.js';
 import { parseInputs } from '../src/core/inputs.js';
 import { makeRng } from '../src/core/rng.js';
 
@@ -17,11 +18,23 @@ test('r3 rounds to 3 decimals and never returns -0', () => {
   assert.ok(Object.is(r3(-0.0001), 0));
 });
 
-test('default lanterns: 5, L1 at (0,0,25), all on ring r=25', () => {
-  const L = defaultLanterns();
-  assert.equal(L.length, 5);
-  assert.deepEqual(L[0].pos, [0, 0, 25]);
-  for (const l of L) assert.ok(Math.abs(Math.hypot(l.pos[0], l.pos[2]) - 25) < 1e-2);
+test('maps: spawn point counts and lantern counts per night (Ticket-02 part 2)', () => {
+  assert.deepEqual([1, 2, 3].map((n) => NIGHTS[n].moteSpawns.length), [24, 24, 30]);
+  assert.deepEqual([1, 2, 3].map((n) => NIGHTS[n].shadeSpawns.length), [12, 16, 16]);
+  assert.deepEqual([1, 2, 3].map((n) => NIGHTS[n].lanterns.length), [5, 6, 7]);
+  // angle convention: point = (r cos a, y, r sin a); night 3 tier-1 points must lie on tier 1 (z > 0, Y = 3)
+  for (const p of NIGHTS[3].moteSpawns) assert.equal(NIGHTS[3].ground(p[0], p[2]), p[1], `ground under ${p}`);
+  for (const p of [...NIGHTS[1].moteSpawns, ...NIGHTS[2].moteSpawns]) assert.equal(NIGHTS[1 + (p[0] > 40 ? 1 : 0)].ground(p[0], p[2]) ?? NIGHTS[2].ground(p[0], p[2]), 0);
+});
+
+test('night 3 terrain: tiers, ramps, tower, void', () => {
+  const g = NIGHTS[3].ground;
+  assert.equal(g(0, 1), 8); // tower
+  assert.equal(g(0, 5), 6); // tier 2
+  assert.equal(g(0, 18), 3); // tier 1 (z > 0)
+  assert.equal(g(0, -18), 0); // z < 0 half has no tier 1
+  assert.equal(g(27 * Math.cos(Math.PI / 6), 27 * Math.sin(Math.PI / 6)), 1.5); // mid ramp
+  assert.equal(g(0, 46), null);
 });
 
 test('input timeline: absent fields keep previous values, edge-trigger handled by Sim', () => {

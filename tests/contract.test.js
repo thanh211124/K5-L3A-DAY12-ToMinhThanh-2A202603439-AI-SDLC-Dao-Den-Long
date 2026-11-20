@@ -17,7 +17,7 @@ const file = (name, content) => {
 
 test('game.contract.json has required fields and tuning == src/core/tuning.js', () => {
   const c = JSON.parse(readFileSync('game.contract.json', 'utf8'));
-  assert.equal(c.contract_version, '1.0');
+  assert.equal(c.contract_version, '1.1');
   for (const k of ['team', 'build_cmd', 'run_cmd', 'headless_cmd']) assert.equal(typeof c[k], 'string', k);
   assert.deepEqual(c.tuning, TUNING);
   assert.equal(c.tuning.lantern_count_night1, 5);
@@ -77,7 +77,7 @@ test('malformed inputs / scenario -> exit 2 with stderr', () => {
 });
 
 test('bad CLI args -> non-zero exit with stderr', () => {
-  for (const args of [['--ticks', '10', '--out', join(dir, 'y.jsonl')], ['--seed', 'abc', '--ticks', '1', '--out', 'x'], ['--seed', '1', '--night', '2', '--ticks', '1', '--out', 'x']]) {
+  for (const args of [['--ticks', '10', '--out', join(dir, 'y.jsonl')], ['--seed', 'abc', '--ticks', '1', '--out', 'x'], ['--seed', '1', '--night', '4', '--ticks', '1', '--out', 'x']]) {
     const r = cli(args);
     assert.notEqual(r.status, 0);
     assert.ok(r.stderr.length > 0);

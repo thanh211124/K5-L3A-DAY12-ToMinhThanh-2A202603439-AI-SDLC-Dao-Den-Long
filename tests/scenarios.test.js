@@ -10,7 +10,7 @@ import { SCENARIOS } from './scenarios/catalog.js';
 const dir = mkdtempSync(join(tmpdir(), 'ddl-'));
 
 export function runCli(sc) {
-  const args = ['src/headless.js', '--seed', String(sc.seed ?? 1), '--night', '1', '--ticks', String(sc.ticks)];
+  const args = ['src/headless.js', '--seed', String(sc.seed ?? 1), '--night', String(sc.night ?? 1), '--ticks', String(sc.ticks), '--snapshot-every', String(sc.every ?? 10)];
   if (sc.scenario) {
     const f = join(dir, `${sc.id}.scenario.json`);
     writeFileSync(f, JSON.stringify(sc.scenario));
