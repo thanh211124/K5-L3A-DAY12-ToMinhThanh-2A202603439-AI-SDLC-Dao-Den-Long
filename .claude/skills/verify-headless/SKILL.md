@@ -7,13 +7,13 @@ description: Verify a gameplay requirement through the real headless CLI and sav
 
 1. Write the acceptance criterion as one sentence ("given X, doing Y gives event/snapshot Z at tick T").
 2. Add an entry to `tests/scenarios/catalog.js`:
-   `{ id: 'ACnn_name', req: '<quote of requirement>', ticks, seed?, scenario, inputs, check: (lines) => null | 'why it failed' }`
-   - Expected numbers must come from `TUNING` (never copy the current output into the expectation).
-   - Use `random_motes:false, random_shades:false` so only listed entities exist.
-3. Run `npm test` → the new test should FAIL before the implementation (proves the check is real).
-4. Implement in `src/core/` only, rerun `npm test` until green.
-5. Run `npm run proof` (or `npm run proof -- phase-N`) → writes inputs, raw `out.jsonl` and `RESULTS.md` under `docs/proof/phase-N/`.
-6. Visual requirement? `npm start` then screenshot:
-   `chrome --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --window-size=1280,720 --virtual-time-budget=4000 --screenshot=docs/proof/phase-N/screens/<name>.png "http://localhost:8080/web/?autostart&lit=2"`
-   Look at the image before claiming it shows the requirement.
-7. Record the result (pass / not yet) in `docs/notes/phase-N.md` traceability table.
+   `{ id: 'P<phase>_nn_name', req: '<quote of requirement>', night?, ticks, seed?, every?, scenario, inputs, check: (lines) => null | 'why it failed' }`
+   - Expected numbers come from the ticket / `TUNING` / `RULES`, never copied from current output.
+   - Start from `empty` (all `random_*` false, `wind_enabled` false) so only listed entities exist.
+   - Timing-sensitive rule? use `every: 1` and assert the exact first/last tick of the effect (off-by-one bugs hide here).
+   - Buttons fire on false→true: use `press(tick, 'dash')` helper (sets true then false next tick).
+3. `npm test` → the new test must FAIL before the implementation.
+4. Implement in `src/core/` only; `npm test` until green.
+5. Mutation check: temporarily change the rule's number in `tuning.js`; the new test must go red; restore.
+6. `npm run proof` → inputs, raw `out.jsonl`, `RESULTS.md` (+ per-night determinism and 21 600-tick timing) in `docs/proof/phase-N/`.
+7. Record pass / not yet in the traceability table of `docs/notes/phase-N.md`.
