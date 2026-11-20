@@ -1,0 +1,126 @@
+{
+  "nights": 10,
+  "crashes": 0,
+  "results": [
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost",
+    "lost"
+  ],
+  "mem_start_mb": 27.5,
+  "mem_end_mb": 31.2,
+  "duration_s": 0.9,
+  "mem_ratio": 1.135,
+  "pass": true,
+  "gc_exposed": true,
+  "node": "v22.11.0",
+  "platform": "win32 x64",
+  "per_night": [
+    {
+      "night_index": 1,
+      "night": 1,
+      "seed": 8,
+      "ticks": 813,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 5,
+      "rss_mb": 28.8
+    },
+    {
+      "night_index": 2,
+      "night": 2,
+      "seed": 9,
+      "ticks": 2766,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 0,
+      "rss_mb": 28.8
+    },
+    {
+      "night_index": 3,
+      "night": 3,
+      "seed": 10,
+      "ticks": 2541,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 0,
+      "rss_mb": 28.9
+    },
+    {
+      "night_index": 4,
+      "night": 1,
+      "seed": 11,
+      "ticks": 1646,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 0,
+      "rss_mb": 28.9
+    },
+    {
+      "night_index": 5,
+      "night": 2,
+      "seed": 12,
+      "ticks": 2708,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 0,
+      "rss_mb": 28.9
+    },
+    {
+      "night_index": 6,
+      "night": 3,
+      "seed": 13,
+      "ticks": 1159,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 0,
+      "rss_mb": 29
+    },
+    {
+      "night_index": 7,
+      "night": 1,
+      "seed": 14,
+      "ticks": 1131,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 0,
+      "rss_mb": 31
+    },
+    {
+      "night_index": 8,
+      "night": 2,
+      "seed": 15,
+      "ticks": 2800,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 5,
+      "rss_mb": 31
+    },
+    {
+      "night_index": 9,
+      "night": 3,
+      "seed": 16,
+      "ticks": 3088,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 10,
+      "rss_mb": 31
+    },
+    {
+      "night_index": 10,
+      "night": 1,
+      "seed": 17,
+      "ticks": 2034,
+      "result": "lost",
+      "reason": "no_flames",
+      "score": 10,
+      "rss_mb": 31.1
+    }
+  ]
+}
