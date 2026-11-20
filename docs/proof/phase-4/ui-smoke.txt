@@ -1,0 +1,25 @@
+PASS  Main menu shown first  
+PASS  Night intro shows island name + Ông Đăng  
+PASS  Playing: simulation advances  sim_tick=127
+PASS  P pauses and logic is frozen  tick 127 -> 127
+PASS  Pause menu has Tiếp tục / Chơi lại Đêm / Cài đặt / Về menu  
+PASS  Esc resumes  tick 190
+PASS  Settings (volume, mouse sensitivity) persist across reload  {"volume":0.33,"sens":1.7,"cb":false,"reduceMotion":false,"largeText":false,"keys":{"up":"KeyW","down":"KeyS","left":"KeyA","right":"KeyD","jump":"Space","dash":"ShiftLeft","interact":"KeyE","pulse":"KeyF","pause":"KeyP"}} ui=33/17
+PASS  Losing shows result with "Chơi lại Đêm"  Thua rồi |  | Ngọn Lửa của Mây đã tắt… |  | Điểm Đêm: 0 · Đèn 0/6 · Lửa 0 | Tổng điểm: 0 |  | Lưu điểm 0 (0 Đêm thắng) — nhập tên 3–12 ký tự: | Lưu vào bảng xếp hạng |  | Chơi lại Đêm 2 | Về menu
+PASS  Retry restarts the same night  
+PASS  All required lanterns lit does not end the night (no early win)  
+PASS  Surviving dawn on night 3 shows Bình Minh with total score  Bình Minh |  | Ba hòn đảo đã sáng trở lại. Ông Đăng mỉm cười: “Giỏi lắm, người giữ đèn.” |  | Tổng điểm: 890 | Lưu điểm 890 (1 Đêm thắng) — nhập tên 3–12 ký tự: | Lưu vào bảng xếp hạng |  | Về menu
+PASS  Colour-blind palette setting persists and sets danger colour #FFFFFF  {"saved":true,"cls":true,"danger":"#FFFFFF"}
+PASS  Key remap: jump rebound to J and saved  KeyJ
+PASS  Duplicate key (dash = interact = E) is detected and reported  ⚠ Trùng phím: Tương tác, Lướt. Hãy đổi một trong các phím bị trùng.
+PASS  "Khôi phục mặc định" restores every binding  {"up":"KeyW","down":"KeyS","left":"KeyA","right":"KeyD","jump":"Space","dash":"ShiftLeft","interact":"KeyE","pulse":"KeyF","pause":"KeyP"}
+PASS  Remapped jump key (J) makes Mây jump in game  y=1.0111111111111115
+PASS  Large text on: every HUD text >= 22.5px (18 × 1.25)  [38.25,22.5,22.5,24.75,22.5,22.5]
+PASS  Reduced motion setting persisted  
+PASS  Caption + arrow when a shade appears  ⚠ Bóng Mực xuất hiện!
+PASS  Default text: no menu text below 18px at 1280×720  min 18px over 8 elements
+PASS  Invalid name (2 chars) is rejected  
+PASS  Score saved and leaderboard shown after losing  Bảng xếp hạng | #	Tên	Điểm	Đêm	Thời điểm | 1	Mây_UI	0	0	2026-11-20 16:48 | Về menu
+PASS  Leaderboard reachable from main menu and survives reload  
+
+23/23 UI checks passed
